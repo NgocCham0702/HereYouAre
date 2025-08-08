@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "537989359576",
+    "project_id": "appdinhvi-c",
+    "storage_bucket": "appdinhvi-c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:537989359576:android:a3d3bb74146ea59eb374ad",
+        "android_client_info": {
+          "package_name": "com.cham.appvitri"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "537989359576-d7g9uv4joc601g39i0cj6fe3424ve8de.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cham.appvitri",
+            "certificate_hash": "8fb1cbd24d0b70c1a6fd3fd0484ee2b83515793d"
+          }
+        },
+        {
+          "client_id": "537989359576-ec9vb33i24mfdqavbtkrl9n3ocjoan7p.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCAaq-6ArNZ8xdjvHp2NMCsjiO89PlDZuA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "537989359576-ec9vb33i24mfdqavbtkrl9n3ocjoan7p.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

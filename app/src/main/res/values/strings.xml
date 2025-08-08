@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">appvitri</string>
+    <string name="default_web_client_id">\"oauth_client\": [\n        {\n          \"client_id\": \"537989359576-d7g9uv4joc601g39i0cj6fe3424ve8de.apps.googleusercontent.com\",\n          \"client_type\": 1,\n          \"android_info\": {\n            \"package_name\": \"com.cham.appvitri\",\n            \"certificate_hash\": \"8fb1cbd24d0b70c1a6fd3fd0484ee2b83515793d\"\n          }\n        },\n        {\n          \"client_id\": \"537989359576-ec9vb33i24mfdqavbtkrl9n3ocjoan7p.apps.googleusercontent.com\",\n          \"client_type\": 3\n        }\n      ],\n    \n</string>
+</resources>
