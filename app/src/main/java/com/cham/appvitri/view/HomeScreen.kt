@@ -25,7 +25,10 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.cham.appvitri.R
+import com.cham.appvitri.repository.UserRepository
+import com.cham.appvitri.utils.AvatarHelper
 import com.cham.appvitri.utils.LocationHelper
+import com.cham.appvitri.viewModel.HomeUiState
 import com.cham.appvitri.viewModel.HomeViewModel
 import com.cham.appvitri.viewModel.HomeViewModelFactory
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -42,16 +45,22 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val cameraPositionState = rememberCameraPositionState() // Quản lý camera state bên trong
-
+    // Khởi tạo ViewModel với cả hai repository
+    val factory = remember(userId) {
+        HomeViewModelFactory(LocationHelper(context), UserRepository())
+    }
     // --- Sử dụng ViewModelFactory để cung cấp LocationHelper cho ViewModel ---
     val locationHelper = remember { LocationHelper(context) }
-    val viewModelFactory = remember { HomeViewModelFactory(locationHelper) }
-    val homeViewModel: HomeViewModel = viewModel(factory = viewModelFactory)
+    val homeViewModel: HomeViewModel = viewModel(factory = factory)
+
+    //val viewModelFactory = remember { HomeViewModelFactory(locationHelper) }
+   // val homeViewModel: HomeViewModel = viewModel(factory = viewModelFactory)
     // --- Kết thúc ---
 //lắng nghe state từ viewmodel
-    val userLocation by homeViewModel.userLocation.collectAsState()
-    val navigateTo by homeViewModel.navigateTo.collectAsState()
+    //val userLocation by homeViewModel.userLocation.collectAsState()
+    //val navigateTo by homeViewModel.navigateTo.collectAsState()
 // logic nôị bộ của màn hình
+    val uiState by homeViewModel.uiState.collectAsState()
     // Kiểm tra xem quyền đã được cấp hay chưa
     val hasLocationPermission = remember {
         ContextCompat.checkSelfPermission(
@@ -61,24 +70,37 @@ fun HomeScreen(
     }
 
     // Chỉ bắt đầu theo dõi vị trí NẾU đã có quyền
-    LaunchedEffect(hasLocationPermission) {
-        if (hasLocationPermission) {
-            homeViewModel.startTrackingLocation(userId)
+//    LaunchedEffect(hasLocationPermission) {
+//        if (hasLocationPermission) {
+//            homeViewModel.startTrackingLocation(userId)
+//        }
+//    }
+    // Khởi tạo ViewModel khi có quyền và userId
+    LaunchedEffect(hasLocationPermission, userId) {
+        if (hasLocationPermission && userId.isNotBlank()) {
+            homeViewModel.initialize(userId)
         }
     }
-
     // Di chuyển camera khi có lệnh từ ViewModel
-    LaunchedEffect(navigateTo) {
-        if (navigateTo == "zoomToLocation") {
-            userLocation?.let { loc ->
-                cameraPositionState.animate(
-                    CameraUpdateFactory.newLatLngZoom(loc, 15f)
-                )
+//    LaunchedEffect(navigateTo) {
+//        if (navigateTo == "zoomToLocation") {
+//            userLocation?.let { loc ->
+//                cameraPositionState.animate(
+//                    CameraUpdateFactory.newLatLngZoom(loc, 15f)
+//                )
+//            }
+//            homeViewModel.onNavigated()
+//        }
+//    }
+// Di chuyển camera khi có lệnh từ ViewModel
+    LaunchedEffect(uiState.navigateTo) {
+        if (uiState.navigateTo == "zoomToLocation") {
+            uiState.userLocation?.let { loc ->
+                cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(loc, 15f))
             }
             homeViewModel.onNavigated()
         }
     }
-
     Scaffold(
         bottomBar = {
             AppBottomBar(
@@ -92,7 +114,8 @@ fun HomeScreen(
         Box(modifier = Modifier.padding(innerPadding)) {
             if (hasLocationPermission) {
                 MapAndOverlays(
-                    userAvatarUrl = null, // Lấy từ thông tin user sau này
+                    //userAvatarUrl = null, // Lấy từ thông tin user sau này
+                    uiState=uiState,
                     onSosClicked = onSosClicked,
                     onAvatarClicked = onAvatarClicked,
                     cameraPositionState = cameraPositionState
@@ -117,7 +140,8 @@ fun HomeScreen(
 // ...
 @Composable
 fun MapAndOverlays(
-    userAvatarUrl: String?,
+    //userAvatarUrl: String?,
+    uiState: HomeUiState,
     onSosClicked: () -> Unit,
     onAvatarClicked: () -> Unit,
     cameraPositionState: CameraPositionState
@@ -150,8 +174,23 @@ fun MapAndOverlays(
             )
         }
 
-        AsyncImage(
-            model = if (userAvatarUrl.isNullOrBlank()) R.drawable.img else userAvatarUrl,
+//        AsyncImage(
+//            model = if (userAvatarUrl.isNullOrBlank()) R.drawable.img else userAvatarUrl,
+//            contentDescription = "User Avatar",
+//            contentScale = ContentScale.Crop,
+//            modifier = Modifier
+//                .align(Alignment.TopEnd)
+//                .padding(16.dp)
+//                .size(55.dp)
+//                .clip(CircleShape)
+//                .background(Color.Yellow)
+//                .border(2.dp, Color.White, CircleShape)
+//                .clickable(onClick = onAvatarClicked)
+//        )
+        // --- CẬP NHẬT AVATAR ĐỂ HIỂN THỊ ẢNH CỦA USER ---
+        Image(
+            // Dùng AvatarHelper để lấy ảnh từ định danh lưu trong userModel
+            painter = painterResource(id = AvatarHelper.getDrawableId(uiState.userModel?.profilePictureUrl)),
             contentDescription = "User Avatar",
             contentScale = ContentScale.Crop,
             modifier = Modifier
