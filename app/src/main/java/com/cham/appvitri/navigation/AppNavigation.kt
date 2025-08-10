@@ -89,7 +89,6 @@ fun AppNavigation() {
         ) { backStackEntry ->
             val userId = backStackEntry.arguments?.getString("userId")
             if (!userId.isNullOrBlank()) {
-                // Sử dụng phiên bản ProfileScreen nhẹ, không chỉnh sửa để test
                 ProfileScreen(
                     userId = userId,
                     onBackClicked = { navController.popBackStack() },
