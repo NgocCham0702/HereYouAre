@@ -10,6 +10,7 @@ import com.cham.appvitri.utils.LocationHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 sealed class RegistrationResult {
     object Idle : RegistrationResult()
@@ -48,18 +49,36 @@ class RegisterViewModel : ViewModel() {
     fun onPasswordChange(pass: String) { _password.value = pass }
     fun onConfirmPasswordChange(pass: String) { _confirmPassword.value = pass }
 
-    fun onRegisterClicked(context:Context) {
+    fun onRegisterClicked(context: Context) {
         if (!validateInputs()) return
 
         viewModelScope.launch {
             _isLoading.value = true
-            _registrationResult.value = RegistrationResult.Idle // Reset state trước khi đăng ký mới
-            // TODO: Gọi hàm đăng ký từ AuthRepository
-            // Nếu đăng ký thành công, lưu thông tin người dùng vào Firestore
-            // Bước 1: Đăng ký tài khoản trong Firebase Auth
+            _registrationResult.value = RegistrationResult.Idle
+
+            // --- PHẦN THAY ĐỔI BẮT ĐẦU TỪ ĐÂY ---
+
+            // 1. Kiểm tra xem người dùng nhập email hay số điện thoại
+            val userInput = _phoneNumber.value.trim()
+            val emailToRegister: String
+            val phoneToSave: String
+            val emailToSave: String
+
+            if (userInput.contains("@") && android.util.Patterns.EMAIL_ADDRESS.matcher(userInput).matches()) {
+                // Người dùng đã nhập một email hợp lệ
+                emailToRegister = userInput
+                emailToSave = userInput
+                phoneToSave = "" // Không có số điện thoại nếu họ nhập email
+            } else {
+                // Người dùng đã nhập số điện thoại (hoặc chuỗi không phải email)
+                emailToRegister = "$userInput@yourapp.com"
+                emailToSave = emailToRegister
+                phoneToSave = userInput
+            }
+
+            // 2. Sử dụng `emailToRegister` để đăng ký với Firebase Auth
             val authResult = authRepository.registerUserWithEmail(
-                // Giả sử dùng SĐT làm email, hoặc bạn có thể thêm trường email
-                "${_phoneNumber.value}@yourapp.com",
+                emailToRegister,
                 _password.value
             )
 
@@ -68,49 +87,113 @@ class RegisterViewModel : ViewModel() {
                 _isLoading.value = false
                 return@launch
             }
-            // Đăng ký Auth thành công, lấy uid
-            val firebaseUser = authResult.getOrNull()
-            if (firebaseUser == null) {
+
+            val firebaseUser = authResult.getOrNull() ?: run {
                 _registrationResult.value = RegistrationResult.Error("Không thể lấy thông tin người dùng.")
                 _isLoading.value = false
                 return@launch
             }
             val userId = firebaseUser.uid
 
-            // Bước 2: Lấy vị trí hiện tại
+            // ... Lấy vị trí, tạo personalCode giữ nguyên ...
             val locationHelper = LocationHelper(context)
-            val currentLocation = locationHelper.fetchCurrentLocation() // Có thể trả về null
+            val currentLocation = locationHelper.fetchCurrentLocation()
+            val displayNameForCode = _displayName.value.trim().lowercase().filter { it.isLetterOrDigit() }
+            val randomSuffix = (1000..9999).random()
+            val generatedPersonalCode = "$displayNameForCode-$randomSuffix"
 
-            // Bước 3: Tạo đối tượng UserModel hoàn chỉnh
+            // 3. Sử dụng các biến đã xử lý để tạo UserModel
             val userProfile = UserModel(
                 uid = userId,
                 displayName = _displayName.value,
-                phoneNumber = _phoneNumber.value,
-                latitude = currentLocation?.latitude, // Gán vĩ độ, nếu null thì thôi
-                longitude = currentLocation?.longitude // Gán kinh độ, nếu null thì thôi
+                phoneNumber = phoneToSave, // Lưu SĐT nếu có
+                email = emailToSave,       // Lưu email thật
+                latitude = currentLocation?.latitude,
+                longitude = currentLocation?.longitude,
+                personalCode = generatedPersonalCode
             )
 
-            // Bước 4: Lưu thông tin vào Firestore
+            // --- KẾT THÚC PHẦN THAY ĐỔI ---
+
+            // Bước 4: Lưu thông tin vào Firestore (giữ nguyên)
             val saveResult = userRepository.saveUserProfile(userProfile)
 
             if (saveResult.isSuccess) {
-                // THÀNH CÔNG TOÀN DIỆN!
                 _registrationResult.value = RegistrationResult.Success(userId)
             } else {
-                // Đăng ký Auth được nhưng lưu profile lỗi
                 _registrationResult.value = RegistrationResult.Error("Đăng ký thành công nhưng không thể lưu hồ sơ.")
             }
             _isLoading.value = false
         }
     }
-
-    fun onGoogleRegisterClicked() {
+    // Hàm này sẽ được gọi từ Screen sau khi có kết quả từ Google
+    fun onGoogleSignInResult(idToken: String, displayName: String?, email: String?) {
         viewModelScope.launch {
             _isLoading.value = true
-            // TODO: Gọi hàm đăng ký/đăng nhập bằng Google từ AuthRepository
+            _registrationResult.value = RegistrationResult.Idle
 
+            // Bước 1: Dùng idToken để đăng nhập vào Firebase
+            val authResult = authRepository.signInWithGoogle(idToken) // Hàm này chúng ta sẽ thêm vào repo
+
+            if (authResult.isFailure) {
+                _registrationResult.value = RegistrationResult.Error(authResult.exceptionOrNull()?.message ?: "Lỗi xác thực với Firebase")
+                _isLoading.value = false
+                return@launch
+            }
+
+            val firebaseUser = authResult.getOrNull()!!
+            val userId = firebaseUser.uid
+
+            // Bước 2: Kiểm tra xem người dùng đã tồn tại trong Firestore chưa
+            // (Đây là bước quan trọng để phân biệt đăng nhập và đăng ký)
+            // Chúng ta cần thêm hàm getUserProfile một lần vào UserRepository
+            val existingUser = userRepository.getUserProfileOnce(userId).getOrNull() // Hàm mới cần tạo
+
+            if (existingUser != null) {
+                // Người dùng đã tồn tại -> Đây là ĐĂNG NHẬP
+                _registrationResult.value = RegistrationResult.Success(userId)
+            } else {
+                // Người dùng mới -> Đây là ĐĂNG KÝ
+                // Tạo một hồ sơ mới cho họ
+                val userProfile = UserModel(
+                    uid = userId,
+                    displayName = displayName ?: "Người dùng Google",
+                    phoneNumber = firebaseUser.phoneNumber ?: "", // Thường là null với Google
+                    email = email ?: "",
+                    personalCode = generatePersonalCode(displayName ?: "googleuser") // Hàm tạo mã mới
+                )
+
+                val saveResult = userRepository.saveUserProfile(userProfile)
+                if (saveResult.isSuccess) {
+                    _registrationResult.value = RegistrationResult.Success(userId)
+                } else {
+                    _registrationResult.value = RegistrationResult.Error("Xác thực thành công nhưng không thể lưu hồ sơ.")
+                }
+            }
             _isLoading.value = false
         }
+    }
+
+    private fun generatePersonalCode(fullName: String): String {
+        // 1. Lấy tên (từ cuối cùng) trong chuỗi họ tên
+        val lastName = fullName.trim().split(" ").lastOrNull() ?: fullName
+
+        // 2. Chuyển thành chữ thường và chỉ giữ lại các ký tự a-z
+        val baseName = lastName.lowercase().filter { it in 'a'..'z' }
+
+        // 3. Xử lý trường hợp tên rỗng hoặc toàn ký tự không phải a-z
+        val finalBaseName = if (baseName.isNotBlank()) {
+            baseName
+        } else {
+            "user" // Tên dự phòng
+        }
+
+        // 4. THAY ĐỔI Ở ĐÂY: Tạo 3 số ngẫu nhiên (từ 0 đến 999)
+        //    .padStart(3, '0') để đảm bảo số luôn có 3 chữ số (ví dụ: 42 -> "042")
+        val randomSuffix = Random.nextInt(1000).toString().padStart(3, '0')
+
+        // 5. Ghép chúng lại
+        return "$finalBaseName$randomSuffix"
     }
 
     private fun validateInputs(): Boolean {
@@ -128,5 +211,8 @@ class RegisterViewModel : ViewModel() {
         }
         // Thêm các kiểm tra khác nếu cần (ví dụ: định dạng SĐT)
         return true
+    }
+    fun onResultConsumed() {
+        _registrationResult.value = RegistrationResult.Idle
     }
 }

@@ -23,7 +23,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
 import com.cham.appvitri.R
 import com.cham.appvitri.repository.UserRepository
 import com.cham.appvitri.utils.AvatarHelper
@@ -70,28 +69,14 @@ fun HomeScreen(
     }
 
     // Chỉ bắt đầu theo dõi vị trí NẾU đã có quyền
-//    LaunchedEffect(hasLocationPermission) {
-//        if (hasLocationPermission) {
-//            homeViewModel.startTrackingLocation(userId)
-//        }
-//    }
+
     // Khởi tạo ViewModel khi có quyền và userId
     LaunchedEffect(hasLocationPermission, userId) {
         if (hasLocationPermission && userId.isNotBlank()) {
             homeViewModel.initialize(userId)
         }
     }
-    // Di chuyển camera khi có lệnh từ ViewModel
-//    LaunchedEffect(navigateTo) {
-//        if (navigateTo == "zoomToLocation") {
-//            userLocation?.let { loc ->
-//                cameraPositionState.animate(
-//                    CameraUpdateFactory.newLatLngZoom(loc, 15f)
-//                )
-//            }
-//            homeViewModel.onNavigated()
-//        }
-//    }
+
 // Di chuyển camera khi có lệnh từ ViewModel
     LaunchedEffect(uiState.navigateTo) {
         if (uiState.navigateTo == "zoomToLocation") {
@@ -174,19 +159,6 @@ fun MapAndOverlays(
             )
         }
 
-//        AsyncImage(
-//            model = if (userAvatarUrl.isNullOrBlank()) R.drawable.img else userAvatarUrl,
-//            contentDescription = "User Avatar",
-//            contentScale = ContentScale.Crop,
-//            modifier = Modifier
-//                .align(Alignment.TopEnd)
-//                .padding(16.dp)
-//                .size(55.dp)
-//                .clip(CircleShape)
-//                .background(Color.Yellow)
-//                .border(2.dp, Color.White, CircleShape)
-//                .clickable(onClick = onAvatarClicked)
-//        )
         // --- CẬP NHẬT AVATAR ĐỂ HIỂN THỊ ẢNH CỦA USER ---
         Image(
             // Dùng AvatarHelper để lấy ảnh từ định danh lưu trong userModel
@@ -216,19 +188,21 @@ fun AppBottomBar(
         color = Color.White,
         modifier = Modifier
             .fillMaxWidth()
-            .height(124.dp),
-        shape = RoundedCornerShape(topStart = 50.dp, topEnd = 10.dp),
+            .height(145.dp)
+            .navigationBarsPadding(), // Vẫn giữ cái này để không bị khuất
+
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 10.dp),
         shadowElevation = 8.dp
     ) {
         Row(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().offset(-10.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            BottomBarItem(R.drawable.img_4, onClick = onAddFriendClicked)
+            BottomBarItem(R.drawable.img_4, hasBorder = true,onClick = onAddFriendClicked)
             BottomBarItem(R.drawable.img_5, hasBorder = true, onClick = onEventsClicked)
-            BottomBarItem(R.drawable.img_3, onClick = onChatClicked)
-            BottomBarItem(R.drawable.location, onClick = onCenterLocationClicked)
+            BottomBarItem(R.drawable.img_3, hasBorder = true,onClick = onChatClicked)
+            BottomBarItem(R.drawable.location,hasBorder = true, onClick = onCenterLocationClicked)
         }
     }
 }

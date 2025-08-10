@@ -5,6 +5,7 @@ import com.google.firebase.Firebase
 import com.google.firebase.auth.AuthResult
 import com.google.firebase.auth.FirebaseAuth // <-- This line is crucial
 import com.google.firebase.auth.FirebaseUser // You'll also need this for getCurrentUser
+import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.firestore
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -14,6 +15,16 @@ import com.google.firebase.firestore.FieldValue
 
 class AuthRepository {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
+    suspend fun signInWithGoogle(idToken: String): Result<FirebaseUser> {
+        return try {
+            val credential = GoogleAuthProvider.getCredential(idToken, null)
+            val authResult = auth.signInWithCredential(credential).await()
+            val user = authResult.user ?: throw IllegalStateException("Firebase user is null after Google Sign-In.")
+            Result.success(user)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
     /**
      * Lấy người dùng đang đăng nhập hiện tại.
      * @return FirebaseUser? - Trả về đối tượng người dùng nếu đã đăng nhập, ngược lại trả về null.
@@ -71,6 +82,24 @@ class UserRepository {
     private val usersCollection = Firebase.firestore.collection("users")
     // Hàm lưu toàn bộ thông tin người dùng vào Firestore
     // Dùng uid làm key cho document
+    /**
+     * Lấy hồ sơ người dùng một lần (không lắng nghe thay đổi).
+     * @param userId ID của người dùng.
+     * @return Result chứa UserModel nếu thành công, hoặc Exception nếu thất bại/không tồn tại.
+     */
+    suspend fun getUserProfileOnce(userId: String): Result<UserModel> {
+        return try {
+            val document = usersCollection.document(userId).get().await()
+            if (document != null && document.exists()) {
+                val user = document.toObject(UserModel::class.java)!!
+                Result.success(user)
+            } else {
+                Result.failure(Exception("User not found."))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
     suspend fun saveUserProfile(user: UserModel): Result<Unit> {
         return try {
             usersCollection.document(user.uid).set(user).await()

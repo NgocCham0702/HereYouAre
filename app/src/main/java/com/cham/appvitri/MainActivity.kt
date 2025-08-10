@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import com.cham.appvitri.navigation.AppNavigation
 import com.cham.appvitri.ui.theme.AppvitriTheme
 import android.Manifest
+import androidx.core.view.WindowCompat
 
 class MainActivity : ComponentActivity() {
 
@@ -34,7 +35,8 @@ class MainActivity : ComponentActivity() {
 
         // Yêu cầu quyền vị trí khi ứng dụng khởi động
         requestLocationPermissions()
-
+        // Cho phép ứng dụng vẽ tràn viền
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
             AppvitriTheme { // Áp dụng theme của ứng dụng
                 Surface(

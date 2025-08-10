@@ -103,7 +103,7 @@ fun AppNavigation() {
 
         // Các màn hình phụ khác
         composable("sos") { SOSScreen() }
-        composable("add_friend") { AddFriendScreen() }
+        composable("add_friend") { AddFriendScreen(onClose = { navController.popBackStack() } ) }
         composable("events") { EventListScreen() }
         composable("chat_list") { ChatListScreen() }
     }

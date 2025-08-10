@@ -1,6 +1,7 @@
 package com.cham.appvitri.view
 
-
+import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,97 +13,140 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.cham.appvitri.R
-// Composable chính cho toàn bộ màn hình
+import com.cham.appvitri.model.UserModel
+import com.cham.appvitri.viewmodel.AddFriendViewModel
+import com.cham.appvitri.viewmodel.AddFriendViewModel.FriendRequestWithReceiver
+import com.cham.appvitri.viewmodel.FriendRequestWithSender
+import com.cham.appvitri.viewmodel.FriendshipStatus
+import com.cham.appvitri.viewmodel.UserWithStatus
 @Composable
-fun AddFriendScreen() {
-    // Sử dụng Scaffold để có cấu trúc TopBar và nội dung chuẩn
+fun AddFriendScreen(
+    onClose: () -> Unit,
+    viewModel: AddFriendViewModel = viewModel()
+) {
+    // Lấy các trạng thái từ ViewModel
+    val personalCode by viewModel.personalCode.collectAsState()
+    val friends by viewModel.friends.collectAsState()
+    val receivedRequests by viewModel.receivedRequests.collectAsState()
+    val searchResult by viewModel.searchResult.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val uiMessage by viewModel.uiMessage.collectAsState()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val sentRequests by viewModel.sentRequests.collectAsState()
+
+    // Hiển thị Snackbar khi có tin nhắn từ ViewModel
+    LaunchedEffect(uiMessage) {
+        uiMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.onMessageShown() // Đặt lại tin nhắn sau khi hiển thị
+        }
+    }
+
     Scaffold(
-        topBar = {
-            // Phần thanh tiêu đề màu xanh ở trên cùng
-            TopBar(
-                onClose = { /* Xử lý sự kiện đóng sau */ }
-            )
-        },
-        // Màu nền cho phần nội dung chính
+        topBar = { TopBar(onClose = onClose) },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         containerColor = Color(0xFFF8F9FA)
     ) { paddingValues ->
-        // Column để xếp các thành phần theo chiều dọc
         Column(
             modifier = Modifier
-                .padding(paddingValues) // Áp dụng padding từ Scaffold
-                .padding(horizontal = 16.dp) // Thêm padding ngang cho các thành phần bên trong
+                .padding(paddingValues)
+                .padding(horizontal = 16.dp)
                 .fillMaxSize()
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
+            //Spacer(modifier = Modifier.height(16.dp))
+            val keyboardController = LocalSoftwareKeyboardController.current
+            SearchSection(
+                searchQuery = viewModel.searchQuery.value,
+                onQueryChange = viewModel::onSearchQueryChanged,
+                onSearchClick = {keyboardController?.hide()
+                     viewModel::searchUsers}
+            )
 
-            // Phần tìm kiếm
-            SearchSection()
+            //Spacer(modifier = Modifier.height(24.dp))
 
-            Spacer(modifier = Modifier.height(24.dp))
+            PersonalCodeSection(
+                code = personalCode,
+                onCopyClick = { /* Logic copy đã được chuyển vào trong */ }
+            )
 
-            // Phần mã cá nhân
-            PersonalCodeSection()
+            //Spacer(modifier = Modifier.height(24.dp))
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Phần danh sách bạn bè
-            FriendListSection()
+            // Hiển thị nội dung động: Loading, Kết quả tìm kiếm, hoặc Danh sách mặc định
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else if (searchResult.isNotEmpty()) {
+                SearchResultSection(
+                    usersWithStatus = searchResult, // Truyền biến đúng kiểu
+                    onAddFriend = viewModel::sendFriendRequest,
+                    onCancelRequest = viewModel::cancelFriendRequest, // Thêm hàm này
+                    sentRequests = sentRequests // Thêm cái này để tìm đúng request cần hủy
+                )
+            } else {
+                DefaultListsSection(
+                    requests = receivedRequests,
+                    sentRequests = sentRequests,
+                    friends = friends,
+                    onAccept = viewModel::acceptFriendRequest,
+                    onDecline = viewModel::declineFriendRequest,
+                    onCancel = viewModel::cancelFriendRequest,
+                    onDelete = viewModel::deleteFriend
+                )
+            }
         }
     }
 }
 
-// Composable cho thanh tiêu đề (Top Bar)
+// --- CÁC COMPOSABLE CON ĐÃ ĐƯỢC CẬP NHẬT ---
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TopBar(onClose: () -> Unit) {
     TopAppBar(
-        title = {
-            Text(
-                "Thêm bạn bè",
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-        },
+        title = { Text("Thêm bạn bè", fontWeight = FontWeight.Bold, color = Color.White) },
         actions = {
-            // Nút "Đóng"
             Button(
                 onClick = onClose,
                 shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD92B1D)) // Màu  cho phù hợp hơn
             ) {
                 Text("Đóng")
             }
         },
-        // Màu nền cho TopAppBar
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = Color(0xFF0D6EFD) // Màu xanh dương từ ảnh
-        )
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0D6EFD))
     )
 }
 
-// Composable cho khu vực tìm kiếm
 @Composable
-fun SearchSection() {
-    // Trạng thái cho ô nhập liệu, tạm thời quản lý tại đây
-    var searchQuery by remember { mutableStateOf("") }
-
+fun SearchSection(
+    searchQuery: String,
+    onQueryChange: (String) -> Unit,
+    onSearchClick: () -> Unit
+) {
     OutlinedTextField(
         value = searchQuery,
-        onValueChange = { searchQuery = it },
-        label = { Text("Nhập tên, email, mã mời hoặc SĐT...") },
+        onValueChange = onQueryChange,
+        label = { Text("Nhập mã mời của bạn bè...") },
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
         shape = RoundedCornerShape(8.dp)
     )
     Spacer(modifier = Modifier.height(8.dp))
     Button(
-        onClick = { /* Xử lý sự kiện tìm kiếm sau */ },
+        onClick = onSearchClick,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D6EFD))
@@ -111,109 +155,215 @@ fun SearchSection() {
     }
 }
 
-// Composable cho khu vực hiển thị mã cá nhân
 @Composable
-fun PersonalCodeSection() {
+fun PersonalCodeSection(code: String, onCopyClick: () -> Unit) {
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+
     Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally // Căn giữa các thành phần
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text("Mã cá nhân của bạn:", fontSize = 18.sp, color = Color.Gray)
         Spacer(modifier = Modifier.height(8.dp))
-        Text("cham-1234", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text(code, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
         Button(
-            onClick = { /* Xử lý sự kiện sao chép sau */ },
+            onClick = {
+                clipboardManager.setText(AnnotatedString(code))
+                Toast.makeText(context, "Đã sao chép mã!", Toast.LENGTH_SHORT).show()
+                onCopyClick()
+            },
             shape = RoundedCornerShape(8.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF198754)) // Màu xanh lá
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF198754))
         ) {
             Text("Sao chép mã")
         }
-        Spacer(modifier = Modifier.height(4.dp))
-        Text("Cập nhật sau 1 ngày", fontSize = 12.sp, color = Color.Gray)
     }
 }
 
-// Composable cho toàn bộ danh sách bạn bè
-@Composable
-fun FriendListSection() {
-    // Dữ liệu giả (hardcoded) để hiển thị danh sách
-    val friends = listOf("Nguyễn Văn A", "Trần Thị B", "Lê Văn C")
+// --- CÁC SECTION MỚI CHO NỘI DUNG ĐỘNG ---
 
-    Text(
-        "Danh sách bạn hiện có",
-        fontSize = 20.sp,
-        fontWeight = FontWeight.Bold
-    )
-    Spacer(modifier = Modifier.height(8.dp))
-    // LazyColumn để hiển thị danh sách một cách hiệu quả
-    LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(friends) { friendName ->
-            FriendItem(
-                name = friendName,
-                onHide = { /* Xử lý ẩn bạn sau */ },
-                onDelete = { /* Xử lý xóa bạn sau */ }
-            )
+@Composable
+fun SearchResultSection(
+    usersWithStatus: List<UserWithStatus>, // Đổi kiểu tham số
+    onAddFriend: (UserModel) -> Unit,
+    onCancelRequest: (FriendRequestWithReceiver) -> Unit,
+    sentRequests: List<FriendRequestWithReceiver>
+) {
+    Column {
+        Text("Kết quả tìm kiếm", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(usersWithStatus, key = { it.user.uid }) { item ->
+                UserItem(
+                    name = item.user.displayName ?: "Người dùng ẩn danh",
+                    actionButton = {
+                        // Dùng when để hiển thị nút phù hợp với trạng thái
+                        when (item.status) {
+                            FriendshipStatus.NOT_FRIENDS -> {
+                                Button(onClick = { onAddFriend(item.user) }) {
+                                    Text("Kết bạn")
+                                }
+                            }
+                            FriendshipStatus.REQUEST_SENT -> {
+                                Button(
+                                    onClick = {
+                                        val requestToCancel = sentRequests.find { it.receiver.uid == item.user.uid }
+                                        requestToCancel?.let(onCancelRequest)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
+                                ) {
+                                    Text("Hủy")
+                                }
+                            }
+                            FriendshipStatus.IS_FRIEND -> {
+                                Text("Bạn bè", color = Color.Gray, fontWeight = FontWeight.Bold)
+                            }
+                            FriendshipStatus.SELF -> {
+                                // Không làm gì, không hiển thị nút
+                            }
+                        }
+                    }
+                )
+            }
         }
     }
 }
-
-// Composable cho một hàng (item) trong danh sách bạn bè
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun FriendItem(name: String, onHide: () -> Unit, onDelete: () -> Unit) {
+fun DefaultListsSection(
+    requests: List<FriendRequestWithSender>,
+    sentRequests: List<FriendRequestWithReceiver>,
+    friends: List<UserModel>,
+    onAccept: (FriendRequestWithSender) -> Unit,
+    onDecline: (FriendRequestWithSender) -> Unit,
+    onCancel: (FriendRequestWithReceiver) -> Unit,
+    onDelete: (UserModel) -> Unit
+) {
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Phần lời mời kết bạn
+        if (requests.isNotEmpty()) {
+            stickyHeader {
+                ListHeader("Lời mời kết bạn")
+            }
+            items(requests, key = { it.request.requestId }) { requestWithSender ->
+                UserItem(
+                    name = requestWithSender.sender.displayName ?: "Người dùng ẩn danh",
+                    actionButton = {
+                        Row {
+                            ActionButton("Chấp nhận", Color(0xFF198754)) { onAccept(requestWithSender) }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            ActionButton("Từ chối", Color(0xFFDC3545)) { onDecline(requestWithSender) }
+                        }
+                    }
+                )
+            }
+        }
+
+        // Phần lời mời đã gửi
+        if (sentRequests.isNotEmpty()) {
+            stickyHeader {
+                ListHeader("Lời mời đã gửi")
+            }
+            items(sentRequests, key = { it.request.requestId }) { requestWithReceiver ->
+                UserItem(
+                    name = requestWithReceiver.receiver.displayName ?: "...",
+                    actionButton = {
+                        Button(
+                            onClick = { onCancel(requestWithReceiver) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
+                        ) { Text("Hủy") }
+                    }
+                )
+            }
+        }
+
+        // Phần danh sách bạn bè
+        stickyHeader {
+            ListHeader("Danh sách bạn hiện có")
+        }
+        if (friends.isEmpty()){
+            item {
+                Text(
+                    text = "Chưa có người bạn nào. Hãy tìm kiếm và kết bạn nhé!",
+                    color = Color.Gray,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+        } else {
+            items(friends, key = { it.uid }) { friend ->
+                UserItem(
+                    name = friend.displayName ?: "Người dùng ẩn danh",
+                    actionButton = {
+                        Button(
+                            onClick = { onDelete(friend) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC3545)),
+                        ) { Text("Xóa") }
+                    }
+                )
+            }
+        }
+    }
+}
+// Composable phụ để tái sử dụng code cho nút nhỏ
+@Composable
+private fun ListHeader(text: String) {
+    Text(
+        text,
+        fontSize = 20.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFF8F9FA)) // Dùng màu nền của Scaffold
+            .padding(vertical = 8.dp)
+    )
+}
+@Composable
+fun ActionButton(text: String, color: Color, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        colors = ButtonDefaults.buttonColors(containerColor = color),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+    ) {
+        Text(text, fontSize = 12.sp)
+    }
+}
+// Một Composable chung để hiển thị một hàng người dùng, tái sử dụng cho cả 3 danh sách
+@Composable
+fun UserItem(name: String, actionButton: @Composable () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp)) // Bo góc cho item
-            .background(Color.White) // Nền trắng cho item
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.White)
             .padding(vertical = 8.dp, horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        // Icon và chữ "Avatar"
-        Icon(
-            painter = painterResource(id = R.drawable.img), // Sử dụng icon đã tạo
-            contentDescription = "Avatar",
-            modifier = Modifier.size(24.dp),
-            tint = Color.Unspecified
-        )
-        Spacer(modifier = Modifier.width(4.dp))
-        // Tên bạn bè
-        Text(
-            text = name,
-            modifier = Modifier.weight(1f), // Chiếm hết không gian còn lại
-            fontSize = 16.sp
-        )
-
-        // Nút "Ẩn"
-        Button(
-            onClick = onHide,
-            shape = RoundedCornerShape(8.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFC107)), // Màu vàng
-            contentPadding = PaddingValues(horizontal = 20.dp)
-        ) {
-            Text("Ẩn", color = Color.Black)
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+            Icon(
+                painter = painterResource(id = R.drawable.img), // Thay bằng ảnh thật sau
+                contentDescription = "Avatar",
+                modifier = Modifier.size(40.dp),
+                tint = Color.Unspecified
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(text = name, fontSize = 16.sp, maxLines = 1)
         }
         Spacer(modifier = Modifier.width(8.dp))
-
-        // Nút "Xóa"
-        Button(
-            onClick = onDelete,
-            shape = RoundedCornerShape(8.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC3545)), // Màu đỏ
-            contentPadding = PaddingValues(horizontal = 16.dp)
-        ) {
-            Text("Xóa")
-        }
+        actionButton()
     }
 }
+
 
 // Composable để xem trước giao diện trong Android Studio
 @Preview(showBackground = true, showSystemUi = true)
 @Composable
 fun AddFriendScreenPreview() {
-    MaterialTheme { // Nên bọc trong Theme của bạn
-        AddFriendScreen()
+    MaterialTheme {
+        // Preview sẽ không hoạt động hoàn chỉnh vì cần ViewModel,
+        // nhưng vẫn có thể dùng để tinh chỉnh các Composable con.
+        AddFriendScreen(onClose = {})
     }
 }

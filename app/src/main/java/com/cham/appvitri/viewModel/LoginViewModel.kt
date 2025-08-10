@@ -11,6 +11,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -93,7 +94,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                         "displayName" to user.displayName,
                         "phoneNumber" to user.phoneNumber,
                         "email" to user.email,
-                        "avatarUrl" to  user.photoUrl.toString()
+                        "profilePictureUrl" to  user.photoUrl.toString()
                     )
                     db.collection("users").document(user.uid).set(userProfile).await()
                 }

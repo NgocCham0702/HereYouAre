@@ -28,12 +28,15 @@ data class UserModel(
     var displayName: String? = null,
     var email: String? = null,
     var phoneNumber: String? = null,
+
     var profilePictureUrl: String? = null, // Sẽ lưu định danh ảnh, ví dụ "avatar_1"
     var bio: String? = null,
-    var inviteCode: String? = null, // Mã mời của người dùng
-    var friendIds: List<String> = emptyList(), // Danh sách ID của bạn bè
-    var sentFriendRequests: List<String> = emptyList(), // ID của người mình đã gửi lời mời
-    var receivedFriendRequests: List<String> = emptyList(), // ID của người đã gửi lời mời cho mình
+// Trường dùng cho chức năng mời và kết bạn
+    var personalCode: String? = null,
+
+    // Danh sách UID của những người đã là bạn bè
+    var friendUids: List<String> = emptyList(),
+
     // Các trường vị trí
     var latitude: Double? = null,
     var longitude: Double? = null,
