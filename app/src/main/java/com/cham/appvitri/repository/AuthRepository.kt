@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.ListenerRegistration
 
 class AuthRepository {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
@@ -142,6 +143,49 @@ class UserRepository {
         // Rất quan trọng để gỡ bỏ listener, tránh rò rỉ bộ nhớ!
         awaitClose {
             subscription.remove()
+        }
+    }
+    /**
+     * Lắng nghe sự thay đổi của một danh sách người dùng trong thời gian thực.
+     * @param friendUids Danh sách ID của những người bạn cần theo dõi.
+     * @return Một Flow phát ra danh sách List<UserModel> mỗi khi có bất kỳ
+     *         người bạn nào trong danh sách thay đổi thông tin.
+     */
+    fun getFriendsProfileFlow(friendUids: List<String>): Flow<List<UserModel>> = callbackFlow {
+        // Nếu danh sách bạn bè rỗng, gửi một danh sách rỗng và kết thúc Flow
+        if (friendUids.isEmpty()) {
+            trySend(emptyList())
+            awaitClose { }
+            return@callbackFlow
+        }
+
+        // Tạo một map để lưu trữ thông tin bạn bè, với key là UID
+        val friendsMap = mutableMapOf<String, UserModel>()
+
+        // Tạo một danh sách các listener để có thể hủy chúng sau này
+        val listeners = mutableListOf<ListenerRegistration>()
+
+        // Lặp qua từng UID của bạn bè để đăng ký listener
+        friendUids.forEach { friendId ->
+            val listener = usersCollection.document(friendId).addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    // Có thể log lỗi ở đây nếu cần
+                    return@addSnapshotListener
+                }
+
+                snapshot?.toObject(UserModel::class.java)?.let { friendUser ->
+                    // Khi thông tin của một người bạn thay đổi, cập nhật họ trong map
+                    friendsMap[friendId] = friendUser
+                    // Gửi đi một bản sao mới của danh sách bạn bè
+                    trySend(friendsMap.values.toList())
+                }
+            }
+            listeners.add(listener) // Thêm listener vào danh sách để quản lý
+        }
+
+        // Khi Flow bị hủy, gỡ bỏ tất cả các listener đã đăng ký để tránh rò rỉ bộ nhớ
+        awaitClose {
+            listeners.forEach { it.remove() }
         }
     }
 

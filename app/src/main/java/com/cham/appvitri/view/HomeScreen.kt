@@ -32,6 +32,33 @@ import com.cham.appvitri.viewModel.HomeViewModel
 import com.cham.appvitri.viewModel.HomeViewModelFactory
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.maps.android.compose.*
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.runtime.LaunchedEffect
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.drawable.toBitmap
+import com.google.android.gms.maps.model.BitmapDescriptor
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.MarkerState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.google.android.gms.maps.model.LatLng
+import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.Rect
+import android.graphics.RectF
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.tooling.preview.Preview
 
 @Composable
 fun HomeScreen(
@@ -49,15 +76,9 @@ fun HomeScreen(
         HomeViewModelFactory(LocationHelper(context), UserRepository())
     }
     // --- Sử dụng ViewModelFactory để cung cấp LocationHelper cho ViewModel ---
-    val locationHelper = remember { LocationHelper(context) }
+    //val locationHelper = remember { LocationHelper(context) }
     val homeViewModel: HomeViewModel = viewModel(factory = factory)
 
-    //val viewModelFactory = remember { HomeViewModelFactory(locationHelper) }
-   // val homeViewModel: HomeViewModel = viewModel(factory = viewModelFactory)
-    // --- Kết thúc ---
-//lắng nghe state từ viewmodel
-    //val userLocation by homeViewModel.userLocation.collectAsState()
-    //val navigateTo by homeViewModel.navigateTo.collectAsState()
 // logic nôị bộ của màn hình
     val uiState by homeViewModel.uiState.collectAsState()
     // Kiểm tra xem quyền đã được cấp hay chưa
@@ -131,7 +152,7 @@ fun MapAndOverlays(
     onAvatarClicked: () -> Unit,
     cameraPositionState: CameraPositionState
 ) {
-    val mapProperties = MapProperties(isMyLocationEnabled = true)
+    val mapProperties = MapProperties(isMyLocationEnabled = false)
     val mapUiSettings = MapUiSettings(myLocationButtonEnabled = false)
 
     Box(Modifier.fillMaxSize()) {
@@ -140,7 +161,36 @@ fun MapAndOverlays(
             cameraPositionState = cameraPositionState,
             properties = mapProperties,
             uiSettings = mapUiSettings
-        ) {}
+        ) {
+            // <<< THAY ĐỔI 2: VẼ MARKER CHO BẠN BÈ VÀ CHÍNH MÌNH >>>
+
+            // Vẽ marker cho chính bạn
+            uiState.userLocation?.let { myLocation ->
+                // Lấy ảnh đại diện của chính mình từ userModel
+                FriendMarker(
+                    position = myLocation,
+                    title = "Vị trí của bạn",
+                    snippet = uiState.userModel?.displayName ?: "",
+                    avatarIdentifier = uiState.userModel?.profilePictureUrl
+                )
+            }
+
+            // Dùng forEach để lặp qua danh sách bạn bè và vẽ marker cho họ
+            uiState.friends.forEach { friend ->
+                val lat = friend.latitude
+                val lng = friend.longitude
+                // Chỉ vẽ marker nếu người bạn đó có thông tin vị trí
+                if (lat != null && lng != null) {
+                    FriendMarker(
+                        // 3. Sử dụng các biến cục bộ trong hàm tạo LatLng.
+                        position = LatLng(lat, lng),
+                        title = friend.displayName ?: "Bạn bè",
+                        snippet = "Đang ở gần bạn", // Có thể cập nhật sau
+                        avatarIdentifier = friend.profilePictureUrl
+                    )
+                }
+            }
+        }
 
         Button(
             onClick = onSosClicked,
@@ -176,7 +226,93 @@ fun MapAndOverlays(
         )
     }
 }
+// <<< THAY ĐỔI 3: THÊM COMPOSABLE MỚI ĐỂ TẠO CUSTOM MARKER >>>
+@Composable
+fun FriendMarker(
+    position: LatLng,
+    title: String,
+    snippet: String,
+    avatarIdentifier: String?
+) {
+    val context = LocalContext.current
+    var bitmapDescriptor by remember { mutableStateOf<BitmapDescriptor?>(null) }
 
+    LaunchedEffect(avatarIdentifier) {
+        withContext(Dispatchers.IO) {
+            // --- KÍCH THƯỚC MONG MUỐN ---
+            val markerWidth = 110 // in pixels
+            val markerHeight = 110 // in pixels
+
+            // --- LẤY ẢNH NỀN VÀ AVATAR ---
+            val pinDrawable = ContextCompat.getDrawable(context, R.drawable.ic_map_pin)
+            val avatarDrawableId = AvatarHelper.getDrawableId(avatarIdentifier)
+            val avatarDrawable = ContextCompat.getDrawable(context, avatarDrawableId)
+
+            // Chuyển thành Bitmap với kích thước mong muốn
+            val pinBitmap = pinDrawable?.toBitmap(markerWidth, markerHeight)
+            // Kích thước avatar nhỏ hơn để có viền
+            val avatarSize = 65
+            val avatarBitmap = avatarDrawable?.toBitmap(avatarSize, avatarSize)
+
+            if (pinBitmap != null && avatarBitmap != null) {
+                // Tạo bitmap cuối cùng
+                val finalBitmap = createBitmap(pinBitmap.width, pinBitmap.height, android.graphics.Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(finalBitmap)
+
+                // --- BẮT ĐẦU VẼ ---
+                // 1. Vẽ icon nền (giọt nước)
+                canvas.drawBitmap(pinBitmap, 0f, 0f, null)
+
+                // 2. Lấy phiên bản bo tròn của avatar
+                val roundedAvatar = getCroppedBitmap(avatarBitmap)
+
+                // 3. Tính toán vị trí để vẽ avatar vào giữa phần đầu của icon nền
+                val left = (pinBitmap.width - roundedAvatar.width) / 2f
+                val top = (pinBitmap.width - roundedAvatar.width) / 2f - 6 // Dịch lên một chút
+
+                // 4. Vẽ avatar đã bo tròn lên trên
+                canvas.drawBitmap(roundedAvatar, left, top, null)
+
+                bitmapDescriptor = BitmapDescriptorFactory.fromBitmap(finalBitmap)
+            }
+        }
+    }
+
+    bitmapDescriptor?.let {
+        Marker(
+            state = MarkerState(position = position),
+            title = title,
+            snippet = snippet,
+            icon = it,
+            anchor = Offset(0.5f, 1.0f)
+        )
+    }
+}
+/**
+ * Composable này định nghĩa giao diện của marker.
+ */
+fun getCroppedBitmap(bitmap: android.graphics.Bitmap): android.graphics.Bitmap {
+    val output = createBitmap(
+        bitmap.width, bitmap.height, android.graphics.Bitmap.Config.ARGB_8888
+    )
+    val canvas = android.graphics.Canvas(output)
+    val color = -0xbdbdbe
+    val paint = Paint()
+    val rect = Rect(0, 0, bitmap.width, bitmap.height)
+    val rectF = RectF(rect)
+
+    paint.isAntiAlias = true
+    canvas.drawARGB(0, 0, 0, 0)
+    paint.color = color
+    canvas.drawOval(rectF, paint)
+    paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+    canvas.drawBitmap(bitmap, rect, rect, paint)
+
+    return output
+}
+/**
+ * Hàm tiện ích để chuyển một ComposeView thành Bitmap.
+ */
 @Composable
 fun AppBottomBar(
     onAddFriendClicked: () -> Unit,
@@ -215,7 +351,7 @@ fun BottomBarItem(
 ) {
     Box(
         modifier = Modifier
-            .size(70.dp)
+            .size(60.dp)
             .clip(CircleShape)
             .then(if (hasBorder) Modifier.border(2.dp, Color(0xFF0D47A1), CircleShape) else Modifier)
             .clickable(onClick = onClick),
@@ -224,8 +360,42 @@ fun BottomBarItem(
         Icon(
             painter = painterResource(id = iconResId),
             contentDescription = null,
-            modifier = Modifier.size(55.dp),
+            modifier = Modifier.size(40.dp),
             tint = Color.Unspecified
+        )
+    }
+}
+@Preview(name = "Marker Visual Preview", showBackground = true)
+@Composable
+fun MarkerVisualPreview() {
+    // --- BẠN SẼ TINH CHỈNH CÁC GIÁ TRỊ DP Ở ĐÂY ---
+    val markerSize = 110.dp
+    val avatarSize = 65.dp
+    val avatarPaddingTop = 11.dp
+    // ---------------------------------------------
+
+    Box(
+        modifier = Modifier.size(markerSize),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        // 1. Icon nền (giọt nước)
+        Icon(
+            imageVector = ImageVector.vectorResource(id = R.drawable.ic_map_pin),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            tint = MaterialTheme.colorScheme.primary // Hoặc màu bạn muốn
+        )
+
+        // 2. Ảnh đại diện bo tròn
+        Image(
+            painter = painterResource(id = AvatarHelper.getDrawableId("avatar_1")), // Dùng ảnh mẫu
+            contentDescription = "Avatar",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .padding(top = avatarPaddingTop) // Dùng giá trị padding để căn chỉnh
+                .size(avatarSize)
+                .clip(CircleShape)
+                .border(2.dp, Color.White, CircleShape)
         )
     }
 }
