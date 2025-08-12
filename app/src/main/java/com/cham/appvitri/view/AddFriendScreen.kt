@@ -1,7 +1,6 @@
 package com.cham.appvitri.view
 
 import android.widget.Toast
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,7 +14,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -25,11 +23,14 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.cham.appvitri.R
 import com.cham.appvitri.model.UserModel
-import com.cham.appvitri.viewmodel.AddFriendViewModel
-import com.cham.appvitri.viewmodel.AddFriendViewModel.FriendRequestWithReceiver
-import com.cham.appvitri.viewmodel.FriendRequestWithSender
-import com.cham.appvitri.viewmodel.FriendshipStatus
-import com.cham.appvitri.viewmodel.UserWithStatus
+import com.cham.appvitri.viewModel.AddFriendViewModel
+import com.cham.appvitri.viewModel.AddFriendViewModel.FriendRequestWithReceiver
+import com.cham.appvitri.viewModel.FriendRequestWithSender
+import com.cham.appvitri.viewModel.FriendshipStatus
+import com.cham.appvitri.viewModel.UserWithStatus
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+
+
 @Composable
 fun AddFriendScreen(
     onClose: () -> Unit,
@@ -65,23 +66,24 @@ fun AddFriendScreen(
                 .padding(horizontal = 16.dp)
                 .fillMaxSize()
         ) {
-            //Spacer(modifier = Modifier.height(16.dp))
             val keyboardController = LocalSoftwareKeyboardController.current
             SearchSection(
                 searchQuery = viewModel.searchQuery.value,
                 onQueryChange = viewModel::onSearchQueryChanged,
-                onSearchClick = {keyboardController?.hide()
-                     viewModel::searchUsers}
+                onSearchClick = {
+                    // <<< 3. ẨN BÀN PHÍM KHI NHẤN NÚT >>>
+                    keyboardController?.hide()
+                    viewModel.searchUsers()}
             )
 
-            //Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             PersonalCodeSection(
                 code = personalCode,
                 onCopyClick = { /* Logic copy đã được chuyển vào trong */ }
             )
 
-            //Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             // Hiển thị nội dung động: Loading, Kết quả tìm kiếm, hoặc Danh sách mặc định
             if (isLoading) {
@@ -90,10 +92,10 @@ fun AddFriendScreen(
                 }
             } else if (searchResult.isNotEmpty()) {
                 SearchResultSection(
-                    usersWithStatus = searchResult, // Truyền biến đúng kiểu
+                    usersWithStatus = searchResult,
                     onAddFriend = viewModel::sendFriendRequest,
-                    onCancelRequest = viewModel::cancelFriendRequest, // Thêm hàm này
-                    sentRequests = sentRequests // Thêm cái này để tìm đúng request cần hủy
+                    onCancelRequest = viewModel::cancelFriendRequest,
+                    sentRequests = sentRequests
                 )
             } else {
                 DefaultListsSection(
@@ -185,44 +187,26 @@ fun PersonalCodeSection(code: String, onCopyClick: () -> Unit) {
 // --- CÁC SECTION MỚI CHO NỘI DUNG ĐỘNG ---
 
 @Composable
-fun SearchResultSection(
-    usersWithStatus: List<UserWithStatus>, // Đổi kiểu tham số
-    onAddFriend: (UserModel) -> Unit,
-    onCancelRequest: (FriendRequestWithReceiver) -> Unit,
-    sentRequests: List<FriendRequestWithReceiver>
-) {
+fun SearchResultSection(usersWithStatus: List<UserWithStatus>,
+                        onAddFriend: (UserModel) -> Unit,
+                        onCancelRequest: (AddFriendViewModel.FriendRequestWithReceiver) -> Unit,
+                        sentRequests: List<AddFriendViewModel.FriendRequestWithReceiver>) {
     Column {
         Text("Kết quả tìm kiếm", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(usersWithStatus, key = { it.user.uid }) { item ->
+            items(usersWithStatus) { item ->
                 UserItem(
-                    name = item.user.displayName ?: "Người dùng ẩn danh",
+                    name = item.user.displayName ?: "...",
                     actionButton = {
-                        // Dùng when để hiển thị nút phù hợp với trạng thái
                         when (item.status) {
-                            FriendshipStatus.NOT_FRIENDS -> {
-                                Button(onClick = { onAddFriend(item.user) }) {
-                                    Text("Kết bạn")
-                                }
-                            }
-                            FriendshipStatus.REQUEST_SENT -> {
-                                Button(
-                                    onClick = {
-                                        val requestToCancel = sentRequests.find { it.receiver.uid == item.user.uid }
-                                        requestToCancel?.let(onCancelRequest)
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
-                                ) {
-                                    Text("Hủy")
-                                }
-                            }
-                            FriendshipStatus.IS_FRIEND -> {
-                                Text("Bạn bè", color = Color.Gray, fontWeight = FontWeight.Bold)
-                            }
-                            FriendshipStatus.SELF -> {
-                                // Không làm gì, không hiển thị nút
-                            }
+                            FriendshipStatus.NOT_FRIENDS -> Button(onClick = { onAddFriend(item.user) }) { Text("Kết bạn") }
+                            FriendshipStatus.REQUEST_SENT -> Button(onClick = {
+                                val requestToCancel = sentRequests.find { it.receiver.uid == item.user.uid }
+                                requestToCancel?.let(onCancelRequest)
+                            }, colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)) { Text("Hủy") }
+                            FriendshipStatus.IS_FRIEND -> Text("Bạn bè")
+                            FriendshipStatus.SELF -> Text("Là bạn")
                         }
                     }
                 )
@@ -230,7 +214,7 @@ fun SearchResultSection(
         }
     }
 }
-@OptIn(ExperimentalFoundationApi::class)
+
 @Composable
 fun DefaultListsSection(
     requests: List<FriendRequestWithSender>,
@@ -241,20 +225,27 @@ fun DefaultListsSection(
     onCancel: (FriendRequestWithReceiver) -> Unit,
     onDelete: (UserModel) -> Unit
 ) {
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         // Phần lời mời kết bạn
         if (requests.isNotEmpty()) {
-            stickyHeader {
-                ListHeader("Lời mời kết bạn")
+            item {
+                Text("Lời mời kết bạn", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
             }
-            items(requests, key = { it.request.requestId }) { requestWithSender ->
+            items(requests) { requestWithSender ->
                 UserItem(
                     name = requestWithSender.sender.displayName ?: "Người dùng ẩn danh",
                     actionButton = {
                         Row {
-                            ActionButton("Chấp nhận", Color(0xFF198754)) { onAccept(requestWithSender) }
+                            Button(
+                                onClick = { onAccept(requestWithSender) },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF198754))
+                            ) { Text("Chấp nhận") }
                             Spacer(modifier = Modifier.width(8.dp))
-                            ActionButton("Từ chối", Color(0xFFDC3545)) { onDecline(requestWithSender) }
+                            Button(
+                                onClick = { onDecline(requestWithSender) },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC3545))
+                            ) { Text("Từ chối") }
                         }
                     }
                 )
@@ -263,72 +254,58 @@ fun DefaultListsSection(
 
         // Phần lời mời đã gửi
         if (sentRequests.isNotEmpty()) {
-            stickyHeader {
-                ListHeader("Lời mời đã gửi")
+            item {
+                Text("Lời mời đã gửi", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
             }
-            items(sentRequests, key = { it.request.requestId }) { requestWithReceiver ->
+            items(sentRequests) { requestWithReceiver ->
                 UserItem(
                     name = requestWithReceiver.receiver.displayName ?: "...",
                     actionButton = {
                         Button(
                             onClick = { onCancel(requestWithReceiver) },
                             colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
-                        ) { Text("Hủy") }
+                        ) {
+                            Text("Hủy")
+                        }
                     }
                 )
             }
         }
-
         // Phần danh sách bạn bè
-        stickyHeader {
-            ListHeader("Danh sách bạn hiện có")
+        item {
+            Text("Danh sách bạn hiện có", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
         }
         if (friends.isEmpty()){
             item {
                 Text(
                     text = "Chưa có người bạn nào. Hãy tìm kiếm và kết bạn nhé!",
                     color = Color.Gray,
-                    modifier = Modifier.padding(16.dp)
+                    modifier = Modifier.padding(8.dp)
                 )
             }
         } else {
-            items(friends, key = { it.uid }) { friend ->
+            items(friends) { friend ->
                 UserItem(
                     name = friend.displayName ?: "Người dùng ẩn danh",
                     actionButton = {
+                        // Nút "Xóa"
                         Button(
                             onClick = { onDelete(friend) },
+                            shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC3545)),
-                        ) { Text("Xóa") }
+                            contentPadding = PaddingValues(horizontal = 16.dp)
+                        ) {
+                            Text("Xóa")
+                        }
                     }
                 )
             }
         }
     }
 }
-// Composable phụ để tái sử dụng code cho nút nhỏ
-@Composable
-private fun ListHeader(text: String) {
-    Text(
-        text,
-        fontSize = 20.sp,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFFF8F9FA)) // Dùng màu nền của Scaffold
-            .padding(vertical = 8.dp)
-    )
-}
-@Composable
-fun ActionButton(text: String, color: Color, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        colors = ButtonDefaults.buttonColors(containerColor = color),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-    ) {
-        Text(text, fontSize = 12.sp)
-    }
-}
+
 // Một Composable chung để hiển thị một hàng người dùng, tái sử dụng cho cả 3 danh sách
 @Composable
 fun UserItem(name: String, actionButton: @Composable () -> Unit) {

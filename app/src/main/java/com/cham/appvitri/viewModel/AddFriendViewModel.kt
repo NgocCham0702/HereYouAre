@@ -1,4 +1,4 @@
-package com.cham.appvitri.viewmodel
+package com.cham.appvitri.viewModel
 
 import android.util.Log
 import com.google.firebase.firestore.QuerySnapshot // Đảm bảo bạn có import này
@@ -9,9 +9,9 @@ import androidx.lifecycle.viewModelScope
 import com.cham.appvitri.model.FriendRequestModel
 import com.cham.appvitri.model.FriendRequestStatus
 import com.cham.appvitri.model.UserModel
+import com.cham.appvitri.repository.UserRepository
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.firestore.ktx.toObject
 import com.google.firebase.ktx.Firebase
@@ -27,16 +27,14 @@ data class FriendRequestWithSender(
     val request: FriendRequestModel,
     val sender: UserModel
 )
-// <<< THÊM 2 ĐỊNH NGHĨA NÀY BÊN NGOÀI CLASS VIEWMODEL >>>
-// Enum để xác định trạng thái mối quan hệ khi tìm kiếm
+// Đặt bên ngoài class AddFriendViewModel
 enum class FriendshipStatus {
-    NOT_FRIENDS,    // Chưa có gì
-    REQUEST_SENT,   // Bạn đã gửi lời mời cho họ
-    IS_FRIEND,      // Đã là bạn bè
-    SELF            // Là chính mình
+    NOT_FRIENDS,
+    REQUEST_SENT,
+    IS_FRIEND,
+    SELF
 }
 
-// Data class mới để chứa kết quả tìm kiếm kèm trạng thái
 data class UserWithStatus(
     val user: UserModel,
     val status: FriendshipStatus
@@ -74,17 +72,16 @@ class AddFriendViewModel : ViewModel() {
     var searchQuery = mutableStateOf("")
         private set
 
-    // <<< THAY ĐỔI KIỂU DỮ LIỆU CỦA SEARCH RESULT >>>
+    // Kết quả tìm kiếm người dùng
+
     private val _searchResult = MutableStateFlow<List<UserWithStatus>>(emptyList())
     val searchResult: StateFlow<List<UserWithStatus>> = _searchResult
-
     // Tin nhắn tạm thời cho UI (ví dụ: "Đã gửi lời mời!")
     private val _uiMessage = MutableStateFlow<String?>(null)
     val uiMessage: StateFlow<String?> = _uiMessage
-    private var userDataListener: ListenerRegistration? = null
-    private var friendsListener: ListenerRegistration? = null
-    private var receivedRequestsListener: ListenerRegistration? = null
-    private var sentRequestsListener: ListenerRegistration? = null
+    //private val chatRepository = ChatRepository() // Giả sử bạn đã có
+    private val userRepository = UserRepository() // Giả sử bạn đã có
+
     init {
         // Bắt đầu tải dữ liệu ngay khi ViewModel được tạo
         currentUserId?.let { uid ->
@@ -92,6 +89,7 @@ class AddFriendViewModel : ViewModel() {
             listenToUserData(uid)
             listenToFriends(uid)
             listenToFriendRequests(uid)
+            listenToSentFriendRequests(uid)
         } ?: run {
             _uiMessage.value = "Lỗi: Người dùng chưa đăng nhập."
         }
@@ -100,9 +98,9 @@ class AddFriendViewModel : ViewModel() {
     // --- Các Hàm Lắng nghe Dữ liệu (Real-time) ---
 
     private fun listenToUserData(uid: String) {
-        userDataListener = usersCollection.document(uid).addSnapshotListener { snapshot, error ->
+        usersCollection.document(uid).addSnapshotListener { snapshot, error ->
             if (error != null) {
-                _uiMessage.value = "Lỗi tải dữ liệu người dùng: ${error.message}"
+                _uiMessage.value = "Lỗi tải dữ liệu người dùng."
                 return@addSnapshotListener
             }
             snapshot?.toObject<UserModel>()?.let { user ->
@@ -112,13 +110,10 @@ class AddFriendViewModel : ViewModel() {
     }
 
     private fun listenToFriends(uid: String) {
-        friendsListener = usersCollection.document(uid).addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                _uiMessage.value = "Lỗi tải danh sách bạn bè: ${error.message}"
-                return@addSnapshotListener
-            }
+        usersCollection.document(uid).addSnapshotListener { snapshot, _ ->
             val friendUids = snapshot?.toObject<UserModel>()?.friendUids ?: emptyList()
             if (friendUids.isNotEmpty()) {
+                // Lấy thông tin chi tiết của từng người bạn
                 usersCollection.whereIn("uid", friendUids).get().addOnSuccessListener { friendSnapshots ->
                     _friends.value = friendSnapshots.toObjects(UserModel::class.java)
                 }
@@ -127,8 +122,9 @@ class AddFriendViewModel : ViewModel() {
             }
         }
     }
+
     private fun listenToFriendRequests(uid: String) {
-        receivedRequestsListener = requestsCollection
+        requestsCollection
             .whereEqualTo("toUid", uid)
             .whereEqualTo("status", FriendRequestStatus.PENDING)
             .addSnapshotListener { snapshot, error ->
@@ -175,43 +171,38 @@ class AddFriendViewModel : ViewModel() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                // Bước 1: Tìm kiếm song song trên các trường
+                // Tìm kiếm user
                 val byCodeDeferred = async { usersCollection.whereEqualTo("personalCode", query).get().await() }
                 val byEmailDeferred = async { usersCollection.whereEqualTo("email", query).get().await() }
                 val byPhoneDeferred = async { usersCollection.whereEqualTo("phoneNumber", query).get().await() }
-
                 val results: List<QuerySnapshot> = awaitAll(byCodeDeferred, byEmailDeferred, byPhoneDeferred)
 
-                // Bước 2: Gom kết quả và loại bỏ trùng lặp, loại bỏ chính mình
                 val uniqueUsers = mutableMapOf<String, UserModel>()
                 results.forEach { snapshot ->
                     snapshot.toObjects(UserModel::class.java).forEach { user ->
+                        // Không thêm chính mình vào kết quả
                         if (user.uid != currentUserId) {
                             uniqueUsers[user.uid] = user
                         }
                     }
                 }
 
-                // --- PHẦN SỬA LỖI BẮT ĐẦU TỪ ĐÂY ---
-
-                // Bước 3: Lấy danh sách ID bạn bè và người đã gửi lời mời để so sánh
+                // Lấy danh sách ID của bạn bè và người đã gửi lời mời để so sánh
                 val friendsUids = _friends.value.map { it.uid }.toSet()
                 val sentRequestUids = _sentRequests.value.map { it.receiver.uid }.toSet()
 
-                // Bước 4: Chuyển đổi danh sách UserModel sang danh sách UserWithStatus
+                // Chuyển đổi List<UserModel> thành List<UserWithStatus>
                 val resultWithStatus = uniqueUsers.values.map { user ->
                     val status = when {
+                        // user.uid == currentUserId đã được lọc ở trên, nên không cần nữa
                         friendsUids.contains(user.uid) -> FriendshipStatus.IS_FRIEND
                         sentRequestUids.contains(user.uid) -> FriendshipStatus.REQUEST_SENT
                         else -> FriendshipStatus.NOT_FRIENDS
                     }
-                    UserWithStatus(user, status) // Tạo đối tượng UserWithStatus
+                    UserWithStatus(user, status)
                 }
 
-                // Bước 5: Gán kết quả đã được chuyển đổi đúng kiểu cho _searchResult
                 _searchResult.value = resultWithStatus
-
-                // --- KẾT THÚC PHẦN SỬA LỖI ---
 
                 if (resultWithStatus.isEmpty()) {
                     _uiMessage.value = "Không tìm thấy người dùng nào."
@@ -219,80 +210,61 @@ class AddFriendViewModel : ViewModel() {
 
             } catch (e: Exception) {
                 _uiMessage.value = "Tìm kiếm thất bại: ${e.message}"
+                Log.e("AddFriendViewModel", "Search failed", e)
             } finally {
                 _isLoading.value = false
             }
         }
     }
+
     fun sendFriendRequest(toUser: UserModel) {
         viewModelScope.launch {
             val fromUid = currentUserId ?: return@launch
             val toUid = toUser.uid
+            // Kiểm tra xem đã gửi lời mời hoặc đã là bạn bè chưa
+            // (Thêm logic kiểm tra này nếu cần để tối ưu)
+            val currentUserDoc = usersCollection.document(fromUid).get().await()
+            val fromUserName = currentUserDoc.getString("displayName")
+            val newRequest = FriendRequestModel(
+                fromUid = fromUid,
+                toUid = toUid,
+                status = FriendRequestStatus.PENDING,
+                fromName = fromUserName,      // <<< THÊM fromName
+                toName = toUser.displayName
+            )
 
-            try {
-                // Lấy thông tin người gửi (chính là người dùng hiện tại)
-                val currentUserDoc = usersCollection.document(fromUid).get().await()
-                val currentUserName = currentUserDoc.getString("displayName")
-
-                val newRequest = FriendRequestModel(
-                    fromUid = fromUid,
-                    fromName = currentUserName, // Tên người gửi
-                    toUid = toUid,
-                    toName = toUser.displayName, // Tên người nhận
-                    status = FriendRequestStatus.PENDING
-                )
-
-                requestsCollection.add(newRequest).await()
-                _uiMessage.value = "Đã gửi lời mời đến ${toUser.displayName}."
-
-            } catch (e: Exception) {
-                _uiMessage.value = "Lỗi khi gửi lời mời: ${e.message}"
-            }
+            requestsCollection.add(newRequest).await()
+            _uiMessage.value = "Đã gửi lời mời đến ${toUser.displayName}."
         }
     }
 
-    // <<< CẬP NHẬT HÀM NÀY ĐỂ FIX LỖI VISUAL REVERT >>>
     fun acceptFriendRequest(requestWithSender: FriendRequestWithSender) {
-        val requestToAccept = requestWithSender.request
-        val sender = requestWithSender.sender
-
-        val originalReceivedRequests = _receivedRequests.value
-        val originalFriends = _friends.value
-
-        _receivedRequests.value = originalReceivedRequests.filterNot { it.request.requestId == requestToAccept.requestId }
-        if (originalFriends.none { it.uid == sender.uid }) {
-            _friends.value = originalFriends + sender
-        }
-
         viewModelScope.launch {
-            val requestDocId = requestToAccept.requestId
+            // --- SỬA LỖI: Kiểm tra requestId trước khi sử dụng ---
+            val requestDocId = requestWithSender.request.requestId
             if (requestDocId.isBlank()) {
                 _uiMessage.value = "Lỗi: Không tìm thấy ID của lời mời."
-                _receivedRequests.value = originalReceivedRequests
-                _friends.value = originalFriends
                 return@launch
             }
+            // --- KẾT THÚC SỬA LỖI ---
+
+            val fromUser = requestWithSender.sender
             val toUid = currentUserId ?: return@launch
 
             try {
                 db.runBatch { batch ->
-                    // <<< KHÔI PHỤC LẠI LOGIC BỊ THIẾU >>>
                     val requestRef = requestsCollection.document(requestDocId)
                     batch.update(requestRef, "status", FriendRequestStatus.ACCEPTED)
 
                     val currentUserRef = usersCollection.document(toUid)
-                    batch.update(currentUserRef, "friendUids", FieldValue.arrayUnion(sender.uid))
+                    batch.update(currentUserRef, "friendUids", FieldValue.arrayUnion(fromUser.uid))
 
-                    val fromUserRef = usersCollection.document(sender.uid)
+                    val fromUserRef = usersCollection.document(fromUser.uid)
                     batch.update(fromUserRef, "friendUids", FieldValue.arrayUnion(toUid))
                 }.await()
-                _uiMessage.value = "Đã kết bạn với ${sender.displayName}."
-
+                _uiMessage.value = "Đã kết bạn với ${fromUser.displayName}."
             } catch (e: Exception) {
                 _uiMessage.value = "Có lỗi xảy ra: ${e.message}"
-                // Hoàn tác UI nếu có lỗi
-                _receivedRequests.value = originalReceivedRequests
-                _friends.value = originalFriends
             }
         }
     }
@@ -315,7 +287,6 @@ class AddFriendViewModel : ViewModel() {
             }
         }
     }
-
 
     fun deleteFriend(friend: UserModel) {
         viewModelScope.launch {
@@ -349,30 +320,26 @@ class AddFriendViewModel : ViewModel() {
 
     // HÀM MỚI: Lắng nghe các lời mời đã gửi
     private fun listenToSentFriendRequests(uid: String) {
-        sentRequestsListener = requestsCollection
+        requestsCollection
             .whereEqualTo("fromUid", uid)
             .whereEqualTo("status", FriendRequestStatus.PENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    _uiMessage.value = "Lỗi tải lời mời đã gửi: ${error.message}"
+                    // Xử lý lỗi
                     return@addSnapshotListener
                 }
                 viewModelScope.launch {
-                    val requestsWithReceivers = snapshot?.documents?.mapNotNull { doc ->
-                        val request = doc.toObject<FriendRequestModel>()
-                        if (request != null) {
-                            request.requestId = doc.id
-                            usersCollection.document(request.toUid).get().await().toObject<UserModel>()?.let { receiver ->
-                                FriendRequestWithReceiver(request, receiver)
-                            }
-                        } else {
-                            null
+                    val requests = snapshot?.documents?.mapNotNull { it.toObject<FriendRequestModel>() } ?: emptyList()
+                    val requestsWithReceivers = requests.mapNotNull { request ->
+                        usersCollection.document(request.toUid).get().await().toObject<UserModel>()?.let { receiver ->
+                            FriendRequestWithReceiver(request, receiver)
                         }
-                    } ?: emptyList()
+                    }
                     _sentRequests.value = requestsWithReceivers
                 }
             }
     }
+
     // THÊM HÀM MỚI: Để hủy lời mời đã gửi
     fun cancelFriendRequest(requestWithReceiver: FriendRequestWithReceiver) {
         viewModelScope.launch {
@@ -386,13 +353,5 @@ class AddFriendViewModel : ViewModel() {
             }
         }
     }
-    // <<< 3. THÊM HÀM onCleared() ĐỂ DỌN DẸP >>>
-    override fun onCleared() {
-        super.onCleared()
-        // Gỡ bỏ tất cả các listener khi ViewModel không còn được sử dụng
-        userDataListener?.remove()
-        friendsListener?.remove()
-        receivedRequestsListener?.remove()
-        sentRequestsListener?.remove()
-    }
+
 }
