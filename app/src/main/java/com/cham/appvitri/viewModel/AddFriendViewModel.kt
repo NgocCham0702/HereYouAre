@@ -9,18 +9,21 @@ import androidx.lifecycle.viewModelScope
 import com.cham.appvitri.model.FriendRequestModel
 import com.cham.appvitri.model.FriendRequestStatus
 import com.cham.appvitri.model.UserModel
+import com.cham.appvitri.repository.ChatRepository
 import com.cham.appvitri.repository.UserRepository
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.firestore.ktx.toObject
 import com.google.firebase.ktx.Firebase
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.withContext
 
 // Lớp này kết hợp thông tin lời mời và thông tin người gửi để UI dễ dàng hiển thị
 data class FriendRequestWithSender(
@@ -46,34 +49,25 @@ class AddFriendViewModel : ViewModel() {
     private val db = Firebase.firestore
     private val usersCollection = db.collection("users")
     private val requestsCollection = db.collection("friend_requests")
-
     // --- Lấy thông tin người dùng hiện tại ---
     private val currentUserId: String? get() = auth.currentUser?.uid
-
     // --- Các Biến Trạng Thái (State) cho UI ---
-
     // Trạng thái chung để hiển thị vòng xoay tải dữ liệu
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
-
     // Mã mời cá nhân của người dùng
     private val _personalCode = MutableStateFlow("Đang tải...")
     val personalCode: StateFlow<String> = _personalCode
-
     // Danh sách những người đã là bạn
     private val _friends = MutableStateFlow<List<UserModel>>(emptyList())
     val friends: StateFlow<List<UserModel>> = _friends
-
     // Danh sách lời mời kết bạn đã nhận
     private val _receivedRequests = MutableStateFlow<List<FriendRequestWithSender>>(emptyList())
     val receivedRequests: StateFlow<List<FriendRequestWithSender>> = _receivedRequests
-
     // Nội dung ô tìm kiếm
     var searchQuery = mutableStateOf("")
         private set
-
     // Kết quả tìm kiếm người dùng
-
     private val _searchResult = MutableStateFlow<List<UserWithStatus>>(emptyList())
     val searchResult: StateFlow<List<UserWithStatus>> = _searchResult
     // Tin nhắn tạm thời cho UI (ví dụ: "Đã gửi lời mời!")
@@ -81,6 +75,7 @@ class AddFriendViewModel : ViewModel() {
     val uiMessage: StateFlow<String?> = _uiMessage
     //private val chatRepository = ChatRepository() // Giả sử bạn đã có
     private val userRepository = UserRepository() // Giả sử bạn đã có
+    private val chatRepository = ChatRepository()
 
     init {
         // Bắt đầu tải dữ liệu ngay khi ViewModel được tạo
@@ -238,7 +233,7 @@ class AddFriendViewModel : ViewModel() {
         }
     }
 
-    fun acceptFriendRequest(requestWithSender: FriendRequestWithSender) {
+    /*fun acceptFriendRequest(requestWithSender: FriendRequestWithSender) {
         viewModelScope.launch {
             // --- SỬA LỖI: Kiểm tra requestId trước khi sử dụng ---
             val requestDocId = requestWithSender.request.requestId
@@ -265,6 +260,55 @@ class AddFriendViewModel : ViewModel() {
                 _uiMessage.value = "Đã kết bạn với ${fromUser.displayName}."
             } catch (e: Exception) {
                 _uiMessage.value = "Có lỗi xảy ra: ${e.message}"
+            }
+        }
+    }*/
+    fun acceptFriendRequest(requestWithSender: FriendRequestWithSender) {
+        viewModelScope.launch(Dispatchers.IO) { // Chuyển sang IO Context vì có nhiều thao tác DB
+            val requestDocId = requestWithSender.request.requestId
+            if (requestDocId.isBlank()) {
+                withContext(Dispatchers.Main) {
+                    _uiMessage.value = "Lỗi: Không tìm thấy ID của lời mời."
+                }
+                return@launch
+            }
+
+            val fromUser = requestWithSender.sender
+            val toUid = currentUserId ?: return@launch
+
+            try {
+                // Bước 1: Chấp nhận lời mời và thêm bạn bè
+                db.runBatch { batch ->
+                    val requestRef = requestsCollection.document(requestDocId)
+                    batch.update(requestRef, "status", FriendRequestStatus.ACCEPTED)
+
+                    val currentUserRef = usersCollection.document(toUid)
+                    batch.update(currentUserRef, "friendUids", FieldValue.arrayUnion(fromUser.uid))
+
+                    val fromUserRef = usersCollection.document(fromUser.uid)
+                    batch.update(fromUserRef, "friendUids", FieldValue.arrayUnion(toUid))
+                }.await()
+
+                // Cập nhật UI trên Main thread
+                withContext(Dispatchers.Main) {
+                    _uiMessage.value = "Đã kết bạn với ${fromUser.displayName}."
+                }
+
+                // Bước 2: TỰ ĐỘNG TẠO CUỘC TRÒ CHUYỆN
+                Log.d("AcceptFriend", "Kết bạn thành công! Bắt đầu tạo phòng chat giữa $toUid và ${fromUser.uid}")
+                try {
+                    val chatId = chatRepository.createChatForTwoUsers(userId1 = toUid, userId2 = fromUser.uid)
+                    Log.d("AcceptFriend", "Tạo/tìm thấy phòng chat thành công. ID: $chatId")
+                } catch (chatError: Exception) {
+                    Log.e("AcceptFriend", "Lỗi nghiêm trọng khi tạo phòng chat: ", chatError)
+                    // Bạn có thể thêm một thông báo lỗi khác ở đây nếu cần
+                }
+
+            } catch (e: Exception) {
+                Log.e("AcceptFriend", "Lỗi khi chấp nhận lời mời: ", e)
+                withContext(Dispatchers.Main) {
+                    _uiMessage.value = "Có lỗi xảy ra: ${e.message}"
+                }
             }
         }
     }

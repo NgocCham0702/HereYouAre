@@ -1,11 +1,13 @@
 package com.cham.appvitri.repository
 
+import android.util.Log
 import com.cham.appvitri.model.UserModel
 import com.google.firebase.Firebase
 import com.google.firebase.auth.AuthResult
 import com.google.firebase.auth.FirebaseAuth // <-- This line is crucial
 import com.google.firebase.auth.FirebaseUser // You'll also need this for getCurrentUser
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.firestore
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -188,7 +190,49 @@ class UserRepository {
             listeners.forEach { it.remove() }
         }
     }
+    suspend fun getFriends(userId: String): Result<List<UserModel>> {
+        return try {
+            val userDoc = usersCollection.document(userId).get().await()
 
+            // --- DÒNG CODE ĐÃ SỬA ---
+            val friendUids = userDoc.toObject(UserModel::class.java)?.friendUids ?: emptyList()
+            // -----------------------
+
+            if (friendUids.isEmpty()) {
+                return Result.success(emptyList())
+            }
+
+            // Firestore giới hạn 30 item trong một câu lệnh 'in'
+            val friendsSnapshot = usersCollection.whereIn(FieldPath.documentId(), friendUids.take(30)).get().await()
+            val friends = friendsSnapshot.toObjects(UserModel::class.java)
+            Result.success(friends)
+        } catch (e: Exception) {
+            Log.e("UserRepository", "Lỗi khi lấy danh sách bạn bè: ", e)
+            Result.failure(e)
+        }
+    }
+    suspend fun getUsersProfiles(userIds: List<String>): Result<List<UserModel>> {
+        // Nếu danh sách ID rỗng, trả về danh sách rỗng ngay lập tức để tránh lỗi
+        if (userIds.isEmpty()) {
+            return Result.success(emptyList())
+        }
+
+        return try {
+            // Firestore chỉ cho phép tối đa 30 giá trị trong mệnh đề 'in'.
+            // .take(30) để đảm bảo an toàn.
+            // Nếu cần hỗ trợ nhiều hơn, bạn sẽ phải chia danh sách userIds ra thành nhiều batch nhỏ.
+            val snapshot = usersCollection
+                .whereIn(FieldPath.documentId(), userIds.take(30))
+                .get()
+                .await()
+
+            val users = snapshot.toObjects(UserModel::class.java)
+            Result.success(users)
+        } catch (e: Exception) {
+            Log.e("UserRepository", "Lỗi khi lấy nhiều profile người dùng: ", e)
+            Result.failure(e)
+        }
+    }
     /**
      * Hàm cập nhật chỉ vị trí của người dùng mà không ghi đè các thông tin khác.
      * @param userId ID của người dùng.

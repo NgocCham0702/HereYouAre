@@ -105,6 +105,39 @@ fun AppNavigation() {
         composable("sos") { SOSScreen() }
         composable("add_friend") { AddFriendScreen(onClose = { navController.popBackStack() } ) }
         composable("events") { EventListScreen() }
-        composable("chat_list") { ChatListScreen() }
+        composable("chat_list") {
+            ChatListScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onChatItemClicked = { chatId ->
+                    navController.navigate("chat_detail/$chatId")
+                },
+                onNavigateToCreateGroup = {
+                    navController.navigate("create_group")
+                }
+            )
+        }
+        composable("create_group") {
+            CreateGroupScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onGroupCreated = { newChatId ->
+                    // Sau khi tạo nhóm thành công, đi thẳng vào màn hình chat của nhóm đó
+                    // và xóa màn hình "CreateGroup" khỏi lịch sử back stack
+                    navController.navigate("chat_detail/$newChatId") {
+                        popUpTo("create_group") { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable(
+            route = "chat_detail/{chatId}",
+            arguments = listOf(navArgument("chatId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            // Lời gọi này đã đúng, không cần truyền tham số nữa
+            ChatDetailScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
     }
 }

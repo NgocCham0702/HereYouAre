@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -23,8 +24,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cham.appvitri.R
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.cham.appvitri.viewModel.ChatListViewModel
 
-// --- Dữ liệu giả (Mock Data) ---
 data class ChatPreview(
     val id: String,
     val name: String,
@@ -33,30 +37,33 @@ data class ChatPreview(
     val avatarResId: Int,
     val isGroup: Boolean
 )
-
-val mockChatList = listOf(
-    ChatPreview("1", "Nhóm Bạn Thân", "Tối nay đi xem phim không?", "10:30 SA", R.drawable.img_14, true),
-    ChatPreview("2", "An Nguyên", "Ok bạn, hẹn gặp lại nhé!", "9:15 SA", R.drawable.img_14, false),
-    ChatPreview("3", "Lê Minh", "Bạn đã gửi một ảnh.", "Hôm qua", R.drawable.img, false),
-    ChatPreview("4", "Team Phượt Cuối Tuần", "Chốt kèo đi Vũng Tàu nha mọi người", "T.Sáu", R.drawable.img_14, true)
-)
-
 // --- Giao diện ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatListScreen() {
+fun ChatListScreen(onNavigateBack: () -> Unit,
+                   onChatItemClicked: (String) -> Unit,
+                   onNavigateToCreateGroup: () -> Unit,
+                   viewModel: ChatListViewModel = viewModel()) {
+    val chatList by viewModel.chatList.collectAsState()
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Tin nhắn") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Quay lại")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary
+                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
                 )
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { /* TODO: Mở màn hình tạo chat mới */ }) {
+            FloatingActionButton(onClick = onNavigateToCreateGroup) {
                 Icon(Icons.Default.Add, contentDescription = "Tạo cuộc trò chuyện mới")
             }
         }
@@ -64,8 +71,8 @@ fun ChatListScreen() {
         LazyColumn(
             modifier = Modifier.padding(innerPadding)
         ) {
-            items(mockChatList) { chat ->
-                ChatItemRow(chat = chat, onClick = {
+            items(chatList) { chat ->
+                ChatItemRow(chat = chat, onClick = {onChatItemClicked(chat.id)
                     // TODO: Điều hướng đến màn hình ChatDetailScreen với chat.id
                     // ✅ THAY THẾ DÒNG TODO
                     println("Navigate to chat with ID: ${chat.id}")
@@ -124,8 +131,8 @@ fun ChatItemRow(chat: ChatPreview, onClick: () -> Unit) {
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun ChatListScreenPreview() {
-    ChatListScreen()
-}
+//@Preview(showBackground = true)
+//@Composable
+//fun ChatListScreenPreview() {
+//    ChatListScreen()
+//}
