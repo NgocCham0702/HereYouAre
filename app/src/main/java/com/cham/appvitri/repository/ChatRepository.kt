@@ -149,4 +149,15 @@ class ChatRepository {
             Result.failure(e)
         }
     }
+    suspend fun hideChatForUser(chatId: String, userId: String) { // Bỏ Result<> đi cho đơn giản
+        try {
+            val chatRef = chatsCollection.document(chatId)
+            chatRef.update("deletedBy", FieldValue.arrayUnion(userId)).await()
+            // THÊM LOG NÀY
+            Log.d("DELETE_DEBUG", "Đã cập nhật thành công deletedBy cho Chat ID: $chatId")
+        } catch (e: Exception) {
+            // THÊM LOG LỖI NÀY
+            Log.e("DELETE_DEBUG", "LỖI KHI CẬP NHẬT deletedBy: ", e)
+        }
+    }
 }
