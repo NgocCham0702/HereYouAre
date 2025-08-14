@@ -1,4 +1,5 @@
- plugins {
+
+plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
@@ -16,7 +17,6 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -79,4 +79,12 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+}
+secrets {
+    // (Tùy chọn) Bạn có thể thay đổi file properties mặc định ở đây.
+    // Mặc định, plugin sẽ tự động tìm "local.properties" trong thư mục gốc.
+    // propertiesFileName = "local.properties"
+
+    // (Tùy chọn) Bỏ qua một số build types nếu cần
+    // ignoreMissingSecrets = true
 }

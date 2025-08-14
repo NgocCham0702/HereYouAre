@@ -18,7 +18,7 @@
         <!-- ✅ VỊ TRÍ CHÍNH XÁC ĐỂ DÁN API KEY -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyBFy5e1wD3iHA-HqOt_0-rFFopSJcxaFC4" />
+            android:value="${MAPS_API_KEY}" />
 
         <activity
             android:name=".MainActivity"
