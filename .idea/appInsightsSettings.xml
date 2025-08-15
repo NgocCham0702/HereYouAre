@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="PLACEHOLDER" />
-                  <option name="mobileSdkAppId" value="" />
-                  <option name="projectId" value="" />
-                  <option name="projectNumber" value="" />
+                  <option name="appId" value="com.cham.appvitri" />
+                  <option name="mobileSdkAppId" value="1:537989359576:android:a3d3bb74146ea59eb374ad" />
+                  <option name="projectId" value="appdinhvi-c" />
+                  <option name="projectNumber" value="537989359576" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />
