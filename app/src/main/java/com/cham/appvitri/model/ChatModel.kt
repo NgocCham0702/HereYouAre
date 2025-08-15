@@ -1,9 +1,10 @@
 package com.cham.appvitri.model
 
-import com.google.firebase.firestore.Exclude // Đảm bảo import đúng
-import com.google.firebase.firestore.ServerTimestamp
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.Exclude
 import com.google.firebase.firestore.PropertyName
+import com.google.firebase.firestore.ServerTimestamp
+
 
 data class ChatModel(
     @get:Exclude // Sửa lại import cho ngắn gọn

@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -62,6 +63,7 @@ import com.google.firebase.auth.GoogleAuthProvider
 @Composable
 fun LoginScreen(
     navController: NavController,
+    onForgotPasswordClicked: () -> Unit,
     onLoginSuccess: (String) -> Unit, // Callback mới: truyền userId sau khi thành công
     loginViewModel: LoginViewModel = viewModel()    )
 {
@@ -180,6 +182,12 @@ fun LoginScreen(
             ) {
                 Text("ĐĂNG NHẬP", color = AppWhite, fontWeight = FontWeight.Bold)
             }
+            TextButton(
+                onClick = onForgotPasswordClicked, // Gọi hàm điều hướng
+                modifier = Modifier.padding(top = 8.dp)
+            ) {
+                Text("Quên mật khẩu?")
+            }
             Text(text="Đăng ký tài khoản",
                 color = AppBlue,
                 fontWeight = FontWeight.SemiBold,
@@ -233,5 +241,5 @@ fun LoginScreen(
 @Composable
 fun LoginScreenPreview() {
     // ViewModel sẽ được tạo tự động, nên Preview sẽ chạy với giá trị mặc định của ViewModel
-    LoginScreen(navController = rememberNavController(), onLoginSuccess = {})}
+    LoginScreen( navController = rememberNavController(), onForgotPasswordClicked = {}, onLoginSuccess = {})}
 

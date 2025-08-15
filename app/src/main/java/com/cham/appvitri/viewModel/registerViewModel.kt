@@ -7,6 +7,7 @@ import com.cham.appvitri.model.UserModel
 import com.cham.appvitri.repository.AuthRepository
 import com.cham.appvitri.repository.UserRepository
 import com.cham.appvitri.utils.LocationHelper
+import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -49,82 +50,220 @@ class RegisterViewModel : ViewModel() {
     fun onPasswordChange(pass: String) { _password.value = pass }
     fun onConfirmPasswordChange(pass: String) { _confirmPassword.value = pass }
 
-    fun onRegisterClicked(context: Context) {
-        if (!validateInputs()) return
+//    fun onRegisterClicked(context: Context) {
+//        if (!validateInputs()) return
+//
+//        viewModelScope.launch {
+//            _isLoading.value = true
+//            _registrationResult.value = RegistrationResult.Idle
+//
+//            // --- PHẦN THAY ĐỔI BẮT ĐẦU TỪ ĐÂY ---
+//
+//            // 1. Kiểm tra xem người dùng nhập email hay số điện thoại
+//            val userInput = _phoneNumber.value.trim()
+//            val emailToRegister: String
+//            val phoneToSave: String
+//            val emailToSave: String
+//
+//            if (userInput.contains("@") && android.util.Patterns.EMAIL_ADDRESS.matcher(userInput).matches()) {
+//                // Người dùng đã nhập một email hợp lệ
+//                emailToRegister = userInput
+//                emailToSave = userInput
+//                phoneToSave = "" // Không có số điện thoại nếu họ nhập email
+//            } else {
+//                // Người dùng đã nhập số điện thoại (hoặc chuỗi không phải email)
+//                emailToRegister = "$userInput@yourapp.com"
+//                emailToSave = emailToRegister
+//                phoneToSave = userInput
+//            }
+//
+//            // 2. Sử dụng `emailToRegister` để đăng ký với Firebase Auth
+//            val authResult = authRepository.registerUserWithEmail(
+//                emailToRegister,
+//                _password.value
+//            )
+//
+//            if (authResult.isFailure) {
+//                _registrationResult.value = RegistrationResult.Error(authResult.exceptionOrNull()?.message ?: "Lỗi không xác định")
+//                _isLoading.value = false
+//                return@launch
+//            }
+//
+//            val firebaseUser = authResult.getOrNull() ?: run {
+//                _registrationResult.value = RegistrationResult.Error("Không thể lấy thông tin người dùng.")
+//                _isLoading.value = false
+//                return@launch
+//            }
+//            val userId = firebaseUser.uid
+//
+//            // ... Lấy vị trí, tạo personalCode giữ nguyên ...
+//            val locationHelper = LocationHelper(context)
+//            val currentLocation = locationHelper.fetchCurrentLocation()
+//            val displayNameForCode = _displayName.value.trim().lowercase().filter { it.isLetterOrDigit() }
+//            val randomSuffix = (1000..9999).random()
+//            val generatedPersonalCode = "$displayNameForCode-$randomSuffix"
+//
+//            // 3. Sử dụng các biến đã xử lý để tạo UserModel
+//            val userProfile = UserModel(
+//                uid = userId,
+//                displayName = _displayName.value,
+//                phoneNumber = phoneToSave, // Lưu SĐT nếu có
+//                email = emailToSave,       // Lưu email thật
+//                latitude = currentLocation?.latitude,
+//                longitude = currentLocation?.longitude,
+//                personalCode = generatedPersonalCode
+//            )
+//
+//            // --- KẾT THÚC PHẦN THAY ĐỔI ---
+//
+//            // Bước 4: Lưu thông tin vào Firestore (giữ nguyên)
+//            val saveResult = userRepository.saveUserProfile(userProfile)
+//
+//            if (saveResult.isSuccess) {
+//                _registrationResult.value = RegistrationResult.Success(userId)
+//            } else {
+//                _registrationResult.value = RegistrationResult.Error("Đăng ký thành công nhưng không thể lưu hồ sơ.")
+//            }
+//            _isLoading.value = false
+//        }
+//    }
+fun onRegisterClicked(context: Context) {
+    // Bước validation giữ nguyên, nhưng sẽ được cải thiện ở Bước 3
+    if (!validateInputs()) return
 
-        viewModelScope.launch {
-            _isLoading.value = true
-            _registrationResult.value = RegistrationResult.Idle
+    viewModelScope.launch {
+        _isLoading.value = true
+        _registrationResult.value = RegistrationResult.Idle
 
-            // --- PHẦN THAY ĐỔI BẮT ĐẦU TỪ ĐÂY ---
+        val userInput = _phoneNumber.value.trim()
+        val isEmailInput =
+            userInput.contains("@") && android.util.Patterns.EMAIL_ADDRESS.matcher(userInput)
+                .matches()
 
-            // 1. Kiểm tra xem người dùng nhập email hay số điện thoại
-            val userInput = _phoneNumber.value.trim()
-            val emailToRegister: String
-            val phoneToSave: String
-            val emailToSave: String
+        // --- BẮT ĐẦU PHẦN LOGIC MỚI ---
 
-            if (userInput.contains("@") && android.util.Patterns.EMAIL_ADDRESS.matcher(userInput).matches()) {
-                // Người dùng đã nhập một email hợp lệ
-                emailToRegister = userInput
-                emailToSave = userInput
-                phoneToSave = "" // Không có số điện thoại nếu họ nhập email
+        if (isEmailInput) {
+            // =========================================================
+            //  LUỒNG 1: NGƯỜI DÙNG ĐĂNG KÝ BẰNG EMAIL THẬT
+            // =========================================================
+            val email = userInput
+
+            // 1A. Kiểm tra email trong Firebase Auth
+            val methodsResult = authRepository.getSignInMethodsForEmail(email)
+
+            if (methodsResult.isSuccess) {
+                val methods = methodsResult.getOrThrow()
+                if (methods.isNotEmpty()) {
+                    val message = when {
+                        methods.contains("google.com") -> "Email này đã được đăng ký qua Google. Vui lòng đăng nhập bằng Google."
+                        methods.contains("password") -> "Email này đã tồn tại. Vui lòng đăng nhập."
+                        else -> "Email này đã tồn tại với phương thức đăng nhập khác."
+                    }
+                    _registrationResult.value = RegistrationResult.Error(message)
+                    _isLoading.value = false
+                    return@launch
+                }
             } else {
-                // Người dùng đã nhập số điện thoại (hoặc chuỗi không phải email)
-                emailToRegister = "$userInput@yourapp.com"
-                emailToSave = emailToRegister
-                phoneToSave = userInput
+                _registrationResult.value =
+                    RegistrationResult.Error("Không thể kiểm tra tài khoản. Vui lòng thử lại.")
+                _isLoading.value = false
+                return@launch
             }
 
-            // 2. Sử dụng `emailToRegister` để đăng ký với Firebase Auth
-            val authResult = authRepository.registerUserWithEmail(
-                emailToRegister,
-                _password.value
-            )
-
+            // 1B. Đăng ký tài khoản Auth với email thật
+            val authResult = authRepository.registerUserWithEmail(email, _password.value)
             if (authResult.isFailure) {
-                _registrationResult.value = RegistrationResult.Error(authResult.exceptionOrNull()?.message ?: "Lỗi không xác định")
+                _registrationResult.value = RegistrationResult.Error(
+                    authResult.exceptionOrNull()?.message ?: "Lỗi đăng ký."
+                )
                 _isLoading.value = false
                 return@launch
             }
 
-            val firebaseUser = authResult.getOrNull() ?: run {
-                _registrationResult.value = RegistrationResult.Error("Không thể lấy thông tin người dùng.")
-                _isLoading.value = false
-                return@launch
-            }
-            val userId = firebaseUser.uid
-
-            // ... Lấy vị trí, tạo personalCode giữ nguyên ...
-            val locationHelper = LocationHelper(context)
-            val currentLocation = locationHelper.fetchCurrentLocation()
-            val displayNameForCode = _displayName.value.trim().lowercase().filter { it.isLetterOrDigit() }
-            val randomSuffix = (1000..9999).random()
-            val generatedPersonalCode = "$displayNameForCode-$randomSuffix"
-
-            // 3. Sử dụng các biến đã xử lý để tạo UserModel
-            val userProfile = UserModel(
-                uid = userId,
+            // 1C. Chuẩn bị dữ liệu và lưu vào Firestore
+            val firebaseUser = authResult.getOrThrow()
+            val userProfile = createUserProfile(
+                context = context,
+                userId = firebaseUser.uid,
                 displayName = _displayName.value,
-                phoneNumber = phoneToSave, // Lưu SĐT nếu có
-                email = emailToSave,       // Lưu email thật
-                latitude = currentLocation?.latitude,
-                longitude = currentLocation?.longitude,
-                personalCode = generatedPersonalCode
+                phoneNumber = "", // Không có SĐT khi đăng ký bằng email
+                email = email      // Lưu email thật
             )
+            saveUserAndFinish(userProfile)
 
-            // --- KẾT THÚC PHẦN THAY ĐỔI ---
+        } else {
+            // ============================================================
+            //  LUỒNG 2: NGƯỜI DÙNG ĐĂNG KÝ BẰNG SỐ ĐIỆN THOẠI
+            // ============================================================
+            val phoneNumber = userInput
 
-            // Bước 4: Lưu thông tin vào Firestore (giữ nguyên)
-            val saveResult = userRepository.saveUserProfile(userProfile)
-
-            if (saveResult.isSuccess) {
-                _registrationResult.value = RegistrationResult.Success(userId)
-            } else {
-                _registrationResult.value = RegistrationResult.Error("Đăng ký thành công nhưng không thể lưu hồ sơ.")
+            // 2A. Kiểm tra SĐT trong Firestore trước tiên
+            val phoneExistsResult = userRepository.isPhoneNumberExists(phoneNumber)
+            if (phoneExistsResult.isFailure || phoneExistsResult.getOrDefault(false)) {
+                _registrationResult.value =
+                    RegistrationResult.Error("Số điện thoại này đã được đăng ký.")
+                _isLoading.value = false
+                return@launch
             }
-            _isLoading.value = false
+
+            // 2B. Tạo "email kỹ thuật" và đăng ký tài khoản Auth
+            val technicalEmail = "$phoneNumber@auth.yourapp.com"
+            val authResult = authRepository.registerUserWithEmail(technicalEmail, _password.value)
+            if (authResult.isFailure) {
+                _registrationResult.value =
+                    RegistrationResult.Error("Không thể tạo tài khoản, vui lòng thử lại.")
+                _isLoading.value = false
+                return@launch
+            }
+
+            // 2C. Chuẩn bị dữ liệu và lưu vào Firestore
+            val firebaseUser = authResult.getOrThrow()
+            val userProfile = createUserProfile(
+                context = context,
+                userId = firebaseUser.uid,
+                displayName = _displayName.value,
+                phoneNumber = phoneNumber, // Lưu SĐT thật
+                email = ""                 // Email thật để trống
+            )
+            saveUserAndFinish(userProfile)
         }
+    }
+}
+
+// --- CÁC HÀM TRỢ GIÚP ĐỂ TRÁNH LẶP CODE ---
+
+    suspend private fun createUserProfile(
+        context: Context,
+        userId: String,
+        displayName: String,
+        phoneNumber: String,
+        email: String
+    ): UserModel {
+        val locationHelper = LocationHelper(context)
+        val currentLocation = locationHelper.fetchCurrentLocation()
+        val generatedPersonalCode = generatePersonalCode()
+
+        return UserModel(
+            uid = userId,
+            displayName = displayName,
+            phoneNumber = phoneNumber,
+            email = email,
+            latitude = currentLocation?.latitude,
+            longitude = currentLocation?.longitude,
+            personalCode = generatedPersonalCode
+        )
+    }
+
+    private suspend fun saveUserAndFinish(userProfile: UserModel) {
+        val saveResult = userRepository.saveUserProfile(userProfile)
+        if (saveResult.isSuccess) {
+            _registrationResult.value = RegistrationResult.Success(userProfile.uid)
+        } else {
+            // Rất quan trọng: Nếu lưu thất bại, tài khoản Auth vẫn được tạo.
+            // Cần có cơ chế dọn dẹp (xóa tài khoản Auth) hoặc yêu cầu người dùng đăng nhập lại để hoàn tất.
+            _registrationResult.value = RegistrationResult.Error("Đăng ký thành công nhưng không thể lưu hồ sơ.")
+        }
+        _isLoading.value = false
     }
     // Hàm này sẽ được gọi từ Screen sau khi có kết quả từ Google
     fun onGoogleSignInResult(idToken: String, displayName: String?, email: String?) {
@@ -132,35 +271,39 @@ class RegisterViewModel : ViewModel() {
             _isLoading.value = true
             _registrationResult.value = RegistrationResult.Idle
 
-            // Bước 1: Dùng idToken để đăng nhập vào Firebase
-            val authResult = authRepository.signInWithGoogle(idToken) // Hàm này chúng ta sẽ thêm vào repo
+            // 1. Đăng nhập vào Firebase
+            val authResult = authRepository.signInWithGoogle(idToken)
 
             if (authResult.isFailure) {
-                _registrationResult.value = RegistrationResult.Error(authResult.exceptionOrNull()?.message ?: "Lỗi xác thực với Firebase")
+                // BẮT LỖI XUNG ĐỘT TÀI KHOẢN (LOGIC MỚI)
+                val exception = authResult.exceptionOrNull()
+                if (exception is FirebaseAuthUserCollisionException) {
+                    // Email này đã tồn tại với một phương thức khác (ví dụ: password)
+                    _registrationResult.value = RegistrationResult.Error("Tài khoản với email này đã tồn tại. Vui lòng đăng nhập bằng mật khẩu.")
+                } else {
+                    _registrationResult.value = RegistrationResult.Error(exception?.message ?: "Lỗi xác thực với Firebase")
+                }
                 _isLoading.value = false
                 return@launch
             }
 
-            val firebaseUser = authResult.getOrNull()!!
+            val firebaseUser = authResult.getOrThrow()
             val userId = firebaseUser.uid
 
-            // Bước 2: Kiểm tra xem người dùng đã tồn tại trong Firestore chưa
-            // (Đây là bước quan trọng để phân biệt đăng nhập và đăng ký)
-            // Chúng ta cần thêm hàm getUserProfile một lần vào UserRepository
-            val existingUser = userRepository.getUserProfileOnce(userId).getOrNull() // Hàm mới cần tạo
+            // 2. Kiểm tra hồ sơ trong Firestore (giữ nguyên logic)
+            val existingUserResult = userRepository.getUserProfileOnce(userId)
 
-            if (existingUser != null) {
-                // Người dùng đã tồn tại -> Đây là ĐĂNG NHẬP
+            if (existingUserResult.isSuccess && existingUserResult.getOrNull() != null) {
+                // Người dùng đã tồn tại -> ĐĂNG NHẬP thành công
                 _registrationResult.value = RegistrationResult.Success(userId)
             } else {
-                // Người dùng mới -> Đây là ĐĂNG KÝ
-                // Tạo một hồ sơ mới cho họ
+                // Người dùng mới -> ĐĂNG KÝ, tạo hồ sơ mới
                 val userProfile = UserModel(
                     uid = userId,
                     displayName = displayName ?: "Người dùng Google",
-                    phoneNumber = firebaseUser.phoneNumber ?: "", // Thường là null với Google
-                    email = email ?: "",
-                    personalCode = generatePersonalCode(displayName ?: "googleuser") // Hàm tạo mã mới
+                    phoneNumber = firebaseUser.phoneNumber ?: "",
+                    email = email ?: firebaseUser.email ?: "",
+                    personalCode = generatePersonalCode()
                 )
 
                 val saveResult = userRepository.saveUserProfile(userProfile)
@@ -173,30 +316,19 @@ class RegisterViewModel : ViewModel() {
             _isLoading.value = false
         }
     }
+    private fun generatePersonalCode(): String {
+        // 1. Định nghĩa bộ ký tự sẽ sử dụng
+        // Bỏ đi các ký tự dễ nhầm lẫn như O, 0, I, l, 1
+        val allowedChars = ('A'..'Z') + ('a'..'z') + ('0'..'9')
 
-    private fun generatePersonalCode(fullName: String): String {
-        // 1. Lấy tên (từ cuối cùng) trong chuỗi họ tên
-        val lastName = fullName.trim().split(" ").lastOrNull() ?: fullName
-
-        // 2. Chuyển thành chữ thường và chỉ giữ lại các ký tự a-z
-        val baseName = lastName.lowercase().filter { it in 'a'..'z' }
-
-        // 3. Xử lý trường hợp tên rỗng hoặc toàn ký tự không phải a-z
-        val finalBaseName = if (baseName.isNotBlank()) {
-            baseName
-        } else {
-            "user" // Tên dự phòng
-        }
-
-        // 4. THAY ĐỔI Ở ĐÂY: Tạo 3 số ngẫu nhiên (từ 0 đến 999)
-        //    .padStart(3, '0') để đảm bảo số luôn có 3 chữ số (ví dụ: 42 -> "042")
-        val randomSuffix = Random.nextInt(1000).toString().padStart(3, '0')
-
-        // 5. Ghép chúng lại
-        return "$finalBaseName$randomSuffix"
+        // 2. Lấy ngẫu nhiên 6 ký tự từ bộ ký tự trên và ghép lại thành chuỗi
+        return (1..6)
+            .map { allowedChars.random() }
+            .joinToString("")
     }
 
     private fun validateInputs(): Boolean {
+        // 1. Kiểm tra các trường thông thường (giữ nguyên)
         if (_displayName.value.isBlank()) {
             _registrationResult.value = RegistrationResult.Error("Vui lòng nhập họ và tên.")
             return false
@@ -209,7 +341,37 @@ class RegisterViewModel : ViewModel() {
             _registrationResult.value = RegistrationResult.Error("Mật khẩu xác nhận không khớp.")
             return false
         }
-        // Thêm các kiểm tra khác nếu cần (ví dụ: định dạng SĐT)
+
+        // --- BẮT ĐẦU PHẦN NÂNG CẤP ---
+
+        // 2. Lấy và kiểm tra trường Email/SĐT
+        val userInput = _phoneNumber.value.trim() // _phoneNumber là StateFlow chứa cả email hoặc sđt
+        if (userInput.isBlank()) {
+            _registrationResult.value = RegistrationResult.Error("Vui lòng nhập email hoặc số điện thoại.")
+            return false
+        }
+
+        // 3. Phân luồng để kiểm tra định dạng
+        val isEmailInput = userInput.contains("@")
+
+        if (isEmailInput) {
+            // Nếu người dùng có vẻ như nhập email, hãy kiểm tra định dạng email
+            if (!android.util.Patterns.EMAIL_ADDRESS.matcher(userInput).matches()) {
+                _registrationResult.value = RegistrationResult.Error("Định dạng email không hợp lệ.")
+                return false
+            }
+        } else {
+            // Nếu không phải email, coi như là SĐT và kiểm tra định dạng SĐT
+            // Regex này khá cơ bản cho SĐT Việt Nam (10 chữ số, bắt đầu bằng 0)
+            // Bạn có thể tùy chỉnh regex này cho chặt chẽ hơn nếu muốn
+            val phoneRegex = Regex("^0\\d{9}$")
+            if (!userInput.matches(phoneRegex)) {
+                _registrationResult.value = RegistrationResult.Error("Số điện thoại không hợp lệ. (Gồm 10 số, bắt đầu bằng 0)")
+                return false
+            }
+        }
+
+        // Nếu tất cả các kiểm tra đều qua
         return true
     }
     fun onResultConsumed() {

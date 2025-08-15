@@ -103,7 +103,7 @@ fun CreateGroupScreen(
 }
 
 @Composable
-private fun FriendSelectItem(
+ fun FriendSelectItem(
     friend: UserModel,
     isSelected: Boolean,
     onSelectionChange: () -> Unit

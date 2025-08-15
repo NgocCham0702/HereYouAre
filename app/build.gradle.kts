@@ -51,27 +51,34 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation("com.google.maps.android:maps-compose:4.3.0") // Hoặc phiên bản mới nhất
-    implementation ("com.google.accompanist:accompanist-permissions:0.34.0")
-    implementation ("com.google.android.gms:play-services-maps:18.2.0")
+    implementation("androidx.compose.material:material-icons-extended-android:1.6.7")
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("androidx.navigation:navigation-compose:2.7.7")
+    implementation ("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.1")
 
+    implementation("com.google.maps.android:maps-compose:4.3.0")
+    implementation("com.google.android.gms:play-services-maps:18.2.0")
     implementation("com.google.android.gms:play-services-location:21.2.0")
 
-    implementation("androidx.compose.material:material-icons-extended-android:1.6.7")
+    // Hoặc phiên bản mới nhất
+    implementation ("com.google.accompanist:accompanist-permissions:0.34.0")
 
+    implementation(platform("com.google.firebase:firebase-bom:33.0.0")) // Sử dụng phiên bản BoM mới nhất
+    implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-analytics")
-    implementation ("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.1")
-    val navVersion = "2.7.7" // Hoặc phiên bản mới nhất bạn muốn dùng
-    implementation("androidx.navigation:navigation-compose:$navVersion")
-    implementation ("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("com.google.firebase:firebase-messaging-ktx")
+
     implementation ("com.google.android.gms:play-services-auth:21.1.1")
     implementation("io.coil-kt:coil-compose:2.6.0")
+
+
     //implementation("com.google.firebase:firebase-storage-ktx") // Dù không dùng Storage, cứ để đó phòng sau này
 //    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     // Triển khai Firebase BoM
+    implementation("com.github.bumptech.glide:glide:4.16.0")
     implementation(platform(libs.firebase.bom))
-    // Triển khai thư viện Authentication (không cần phiên bản)
-    implementation(libs.firebase.auth.ktx)
+    implementation(libs.firebase.messaging)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

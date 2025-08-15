@@ -40,12 +40,22 @@ fun AppNavigation() {
                 }
             }
         }
-
+        composable("forgot_password") {
+            ForgotPasswordScreen(
+                onPasswordResetSuccess = {
+                    // Quay lại màn hình login sau khi thành công
+                    navController.popBackStack()
+                }
+            )
+        }
         composable("welcome") { WelcomeScreen(navController = navController) }
 
         composable("login") {
             LoginScreen(
                 navController = navController,
+                onForgotPasswordClicked = {
+                    navController.navigate("forgot_password")
+                },
                 onLoginSuccess = { userId ->
                     navController.navigate("home/$userId") {
                         popUpTo("welcome") { inclusive = true }
@@ -72,7 +82,7 @@ fun AppNavigation() {
                     },
                     onSosClicked = { navController.navigate("sos") },
                     onAddFriendClicked = { navController.navigate("add_friend") },
-                    onEventsClicked = { navController.navigate("events") },
+                    onEventsClicked = { navController.navigate("event_list") },
                     onChatClicked = { navController.navigate("chat_list") }
                 )
             } else {
@@ -102,9 +112,35 @@ fun AppNavigation() {
         }
 
         // Các màn hình phụ khác
-        composable("sos") { SOSScreen() }
+        composable("sos") {
+            SOSScreen(
+                onNavigateBack = {
+                    // Lệnh này sẽ đưa người dùng quay lại màn hình trước đó
+                    navController.popBackStack()
+                }
+            )
+        }
         composable("add_friend") { AddFriendScreen(onClose = { navController.popBackStack() } ) }
-        composable("events") { EventListScreen() }
+        composable("event_list") {
+            EventListScreen(
+                onNavigateToCreateEvent = {
+                    navController.navigate("create_event")
+                },
+                // --- TRUYỀN HÀNH ĐỘNG QUAY LẠI VÀO ĐÂY ---
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        // 2. Route cho màn hình TẠO MỚI sự kiện
+        composable("create_event") {
+            CreateEventScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
         composable("chat_list") {
             ChatListScreen(
                 onNavigateBack = {

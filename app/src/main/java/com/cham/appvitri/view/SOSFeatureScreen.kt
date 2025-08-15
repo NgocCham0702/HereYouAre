@@ -1,4 +1,5 @@
 package com.cham.appvitri.view
+
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
@@ -9,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,54 +21,41 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.cham.appvitri.R // Thay đổi package cho phù hợp
+import com.cham.appvitri.viewModel.SOSViewModel
 import kotlinx.coroutines.delay
 import kotlin.math.cos
 import kotlin.math.sin
-
-// --- Data class để biểu diễn một người bạn/liên hệ khẩn cấp ---
-data class EmergencyContact(
-    val name: String,
-    @DrawableRes val avatarResId: Int
-)
+import android.app.Application
+import com.cham.appvitri.model.EmergencyContact
+import com.cham.appvitri.viewModel.SOSViewModelFactory
 
 // --- Composable chính cho toàn bộ màn hình SOS ---
 @Composable
-fun SOSScreen() {
-    // Trạng thái để quản lý thời gian đếm ngược
-    var timeLeft by remember { mutableStateOf(10) }
-    // Trạng thái để biết người dùng đã nhấn nút "An toàn" chưa
-    var isCancelled by remember { mutableStateOf(false) }
-
-    // Dữ liệu giả cho các liên hệ khẩn cấp
-    val contacts = remember {
-        listOf(
-            EmergencyContact("Chị An", R.drawable.img),
-            EmergencyContact("Chú Ba", R.drawable.img),
-            EmergencyContact("Mẹ", R.drawable.img_10),
-            EmergencyContact("Bố", R.drawable.img_9)
+fun SOSScreen(onNavigateBack: () -> Unit) {
+    val viewModel: SOSViewModel = viewModel(
+        factory = SOSViewModelFactory(
+            LocalContext.current.applicationContext as Application
         )
-    }
+    )
+    // Trạng thái để quản lý thời gian đếm ngược
+    val uiState by viewModel.uiState.collectAsState()
 
-    // Coroutine để chạy đồng hồ đếm ngược
-    LaunchedEffect(key1 = isCancelled) {
-        // Nếu người dùng đã hủy, không chạy nữa
-        if (isCancelled) return@LaunchedEffect
-
-        while (timeLeft > 0) {
-            delay(1000)
-            timeLeft--
+    LaunchedEffect(uiState.isCancelled) {
+        if (uiState.isCancelled) {
+            delay(2000)
+            onNavigateBack()
         }
-        // Khi đếm ngược xong, có thể thực hiện hành động tiếp theo ở đây
-        // (ví dụ: chuyển sang màn hình "Đang chia sẻ vị trí")
     }
-
     // Nền gradient tỏa tròn từ vàng sang hồng
     val backgroundBrush = Brush.radialGradient(
         colors = listOf(Color(0xFFFBE9A7), Color(0xFFF9C5D1)),
@@ -84,39 +73,49 @@ fun SOSScreen() {
                 .fillMaxSize()
                 .padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.SpaceAround
         ) {
-            // Phần văn bản trạng thái ở trên cùng
-            StatusText()
+            // Hiển thị trạng thái dựa trên tin nhắn từ ViewModel
+            StatusText(statusMessage = uiState.statusMessage, isCancelled = uiState.isCancelled)
 
-            // Phần hiệu ứng radar và đồng hồ ở giữa
             RadarAndCountdown(
-                timeLeft = timeLeft,
-                contacts = contacts
+                timeLeft = uiState.timeLeft,
+                contacts = uiState.emergencyContacts,
+                isCancelled = uiState.isCancelled
             )
 
-            // Nút "An toàn" ở dưới cùng
             SafetyButton(
-                onClick = {
-                    isCancelled = true
-                }
+                onClick = { viewModel.cancelSos() },
+                enabled = !uiState.isCancelled // Lấy từ state
+
             )
         }
     }
 }
-
 @Composable
-private fun StatusText() {
+private fun StatusText(statusMessage: String?, isCancelled: Boolean) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        // Thay đổi văn bản dựa trên trạng thái
+        val title = when {
+            statusMessage != null -> "Thông báo"
+            isCancelled -> "Đã hủy"
+            else -> "Đang gọi khẩn cấp..."
+        }
+        val description = statusMessage ?: if (isCancelled) {
+            "Tín hiệu SOS đã được hủy. Bạn an toàn."
+        } else {
+            "Hệ thống sẽ gửi tín hiệu cầu cứu và vị trí của bạn sau khi đếm ngược kết thúc."
+        }
+
         Text(
-            text = "Đang gọi khẩn cấp...",
+            text = title,
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF333333)
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Vui lòng đợi, hệ thống đang gửi tín hiệu cầu cứu và vị trí của bạn đến các liên hệ khẩn cấp.",
+            text = description,
             textAlign = TextAlign.Center,
             fontSize = 16.sp,
             color = Color.Gray
@@ -125,24 +124,86 @@ private fun StatusText() {
 }
 
 @Composable
-private fun RadarAndCountdown(timeLeft: Int, contacts: List<EmergencyContact>) {
+private fun RadarAndCountdown(timeLeft: Int, contacts: List<EmergencyContact>, isCancelled: Boolean) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(1f), // Đảm bảo khu vực này là hình vuông
+            .aspectRatio(1f),
         contentAlignment = Alignment.Center
     ) {
-        // Hiệu ứng sóng radar lan tỏa
-        RadarPulseAnimation()
+        // Chỉ hiển thị hiệu ứng radar khi chưa bị hủy
+        if (!isCancelled) {
+            RadarPulseAnimation()
+            ContactsOnRadar(contacts = contacts)
+        }
 
-        // Hiển thị các avatar trên sóng radar
-        ContactsOnRadar(contacts = contacts)
-
-        // Đồng hồ đếm ngược ở trung tâm
-        CountdownDisplay(timeLeft = timeLeft)
+        // Hiển thị đồng hồ hoặc biểu tượng "an toàn"
+        CountdownDisplay(timeLeft = timeLeft, isCancelled = isCancelled)
     }
 }
 
+@Composable
+private fun CountdownDisplay(timeLeft: Int, isCancelled: Boolean) {
+    val backgroundColor = if (isCancelled) Color(0xFF198754) else Color(0xFFFD8A8A)
+
+    Box(
+        modifier = Modifier
+            .size(180.dp)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.5f))
+            .padding(10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(CircleShape)
+                .background(backgroundColor), // Màu nền thay đổi
+            contentAlignment = Alignment.Center
+        ) {
+            if (isCancelled) {
+                // Hiển thị icon an toàn khi đã hủy
+                Icon(
+                    painter = painterResource(id = R.drawable.img_16), // Thay bằng icon check/khiên của bạn
+                    contentDescription = "An toàn",
+                    tint = Color.White,
+                    modifier = Modifier.size(80.dp)
+                )
+            } else {
+                // Hiển thị đồng hồ đếm ngược
+                Text(
+                    text = String.format("%02d", timeLeft),
+                    color = Color.White,
+                    fontSize = 80.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SafetyButton(onClick: () -> Unit, enabled: Boolean) {
+    Button(
+        onClick = onClick,
+        enabled = enabled, // <<< Điều khiển trạng thái nút
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        shape = RoundedCornerShape(28.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF198754),
+            disabledContainerColor = Color.Gray
+        )
+    ) {
+        Text(
+            text = "TÔI AN TOÀN",
+            color = Color.White,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
 
 @Composable
 private fun RadarPulseAnimation() {
@@ -233,60 +294,9 @@ fun BoxScope.ContactsOnRadar(contacts: List<EmergencyContact>) {
     }
 }
 
-
-@Composable
-private fun CountdownDisplay(timeLeft: Int) {
-    Box(
-        modifier = Modifier
-            .size(180.dp)
-            .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.5f))
-            .padding(10.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(CircleShape)
-                .background(Color(0xFFFD8A8A)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                // Định dạng số để luôn có 2 chữ số, ví dụ: "09", "08"...
-                text = String.format("%02d", timeLeft),
-                color = Color.White,
-                fontSize = 80.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-@Composable
-private fun SafetyButton(onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp),
-        shape = RoundedCornerShape(28.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFF198754) // Màu xanh lá cây an toàn
-        )
-    ) {
-        Text(
-            text = "TÔI AN TOÀN",
-            color = Color.White,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-
 // --- Composable để xem trước trong Android Studio ---
 @Preview(showBackground = true, showSystemUi = true)
 @Composable
 fun SOSScreenPreview() {
-    SOSScreen()
+    SOSScreen(onNavigateBack = {})
 }

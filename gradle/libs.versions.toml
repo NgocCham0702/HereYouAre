@@ -9,7 +9,8 @@ lifecycleRuntimeKtx = "2.9.1"
 activityCompose = "1.10.1"
 composeBom = "2024.09.00"
 playServicesMaps = "19.2.0"
-firebaseBom = "32.7.2" # Thêm phiên bản cho Firebase BoM
+firebaseBom = "32.7.2"
+firebaseMessaging = "25.0.0" # Thêm phiên bản cho Firebase BoM
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -30,6 +31,7 @@ play-services-maps = { group = "com.google.android.gms", name = "play-services-m
 # Thêm các thư viện Firebase vào đây
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-auth-ktx = { group = "com.google.firebase", name = "firebase-auth-ktx" }
+firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging", version.ref = "firebaseMessaging" }
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

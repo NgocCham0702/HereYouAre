@@ -49,6 +49,16 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,7 +68,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.sp
+import com.cham.appvitri.repository.SOSRepository
+import com.cham.appvitri.viewModel.ActiveSosAlert
 
 @Composable
 fun HomeScreen(
@@ -73,14 +87,17 @@ fun HomeScreen(
     val cameraPositionState = rememberCameraPositionState() // Quản lý camera state bên trong
     // Khởi tạo ViewModel với cả hai repository
     val factory = remember(userId) {
-        HomeViewModelFactory(LocationHelper(context), UserRepository())
+        HomeViewModelFactory(
+            locationHelper = LocationHelper(context),
+            userRepository = UserRepository(),
+            sosRepository = SOSRepository() // <<< Thêm vào đây
+        )
     }
-    // --- Sử dụng ViewModelFactory để cung cấp LocationHelper cho ViewModel ---
-    //val locationHelper = remember { LocationHelper(context) }
     val homeViewModel: HomeViewModel = viewModel(factory = factory)
 
 // logic nôị bộ của màn hình
     val uiState by homeViewModel.uiState.collectAsState()
+
     // Kiểm tra xem quyền đã được cấp hay chưa
     val hasLocationPermission = remember {
         ContextCompat.checkSelfPermission(
@@ -100,10 +117,13 @@ fun HomeScreen(
 
 // Di chuyển camera khi có lệnh từ ViewModel
     LaunchedEffect(uiState.navigateTo) {
-        if (uiState.navigateTo == "zoomToLocation") {
-            uiState.userLocation?.let { loc ->
+        // Chỉ chạy khi navigateTo có giá trị
+        if (uiState.navigateTo == "zoomToTarget") {
+            // Lấy tọa độ từ cameraTargetLocation thay vì userLocation
+            uiState.cameraTargetLocation?.let { loc ->
                 cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(loc, 15f))
             }
+            // Reset lại sau khi đã di chuyển
             homeViewModel.onNavigated()
         }
     }
@@ -121,10 +141,10 @@ fun HomeScreen(
             if (hasLocationPermission) {
                 MapAndOverlays(
                     //userAvatarUrl = null, // Lấy từ thông tin user sau này
-                    uiState=uiState,
+                    uiState = uiState,
+                    cameraPositionState = cameraPositionState,
                     onSosClicked = onSosClicked,
-                    onAvatarClicked = onAvatarClicked,
-                    cameraPositionState = cameraPositionState
+                    onAvatarClicked = onAvatarClicked
                 )
             } else {
                 // Hiển thị thông báo nếu không có quyền
@@ -146,11 +166,10 @@ fun HomeScreen(
 // ...
 @Composable
 fun MapAndOverlays(
-    //userAvatarUrl: String?,
     uiState: HomeUiState,
+    cameraPositionState: CameraPositionState,
     onSosClicked: () -> Unit,
-    onAvatarClicked: () -> Unit,
-    cameraPositionState: CameraPositionState
+    onAvatarClicked: () -> Unit
 ) {
     val mapProperties = MapProperties(isMyLocationEnabled = false)
     val mapUiSettings = MapUiSettings(myLocationButtonEnabled = false)
@@ -162,11 +181,8 @@ fun MapAndOverlays(
             properties = mapProperties,
             uiSettings = mapUiSettings
         ) {
-            // <<< THAY ĐỔI 2: VẼ MARKER CHO BẠN BÈ VÀ CHÍNH MÌNH >>>
-
-            // Vẽ marker cho chính bạn
+            // Marker cho chính bạn
             uiState.userLocation?.let { myLocation ->
-                // Lấy ảnh đại diện của chính mình từ userModel
                 FriendMarker(
                     position = myLocation,
                     title = "Vị trí của bạn",
@@ -175,22 +191,41 @@ fun MapAndOverlays(
                 )
             }
 
-            // Dùng forEach để lặp qua danh sách bạn bè và vẽ marker cho họ
+            // Marker cho bạn bè bình thường
             uiState.friends.forEach { friend ->
-                val lat = friend.latitude
-                val lng = friend.longitude
-                // Chỉ vẽ marker nếu người bạn đó có thông tin vị trí
-                if (lat != null && lng != null) {
-                    FriendMarker(
-                        // 3. Sử dụng các biến cục bộ trong hàm tạo LatLng.
-                        position = LatLng(lat, lng),
-                        title = friend.displayName ?: "Bạn bè",
-                        snippet = "Đang ở gần bạn", // Có thể cập nhật sau
-                        avatarIdentifier = friend.profilePictureUrl
-                    )
+                if (friend.uid != uiState.activeSosAlert?.requestingUserId) {
+                    val lat = friend.latitude
+                    val lng = friend.longitude
+                    if (lat != null && lng != null) {
+                        FriendMarker(
+                            position = LatLng(lat, lng),
+                            title = friend.displayName ?: "Bạn bè",
+                            snippet = "Đang ở gần bạn",
+                            avatarIdentifier = friend.profilePictureUrl
+                        )
+                    }
                 }
             }
+
+            // Marker SOS đặc biệt
+            uiState.activeSosAlert?.let { alert ->
+                SosMarker(position = alert.location, name = alert.requestingUserName)
+            }
         }
+
+        // --- BANNER CẢNH BÁO SOS ---
+        AnimatedVisibility(
+            visible = uiState.activeSosAlert != null,
+            modifier = Modifier.align(Alignment.TopCenter)
+        ) {
+            uiState.activeSosAlert?.let { alert ->
+                SosAlertBanner(
+                    alert = alert,
+                    onClick = { /* Tạm thời chưa làm gì */ }
+                )
+            }
+        }
+        // -------------------------
 
         Button(
             onClick = onSosClicked,
@@ -209,9 +244,7 @@ fun MapAndOverlays(
             )
         }
 
-        // --- CẬP NHẬT AVATAR ĐỂ HIỂN THỊ ẢNH CỦA USER ---
         Image(
-            // Dùng AvatarHelper để lấy ảnh từ định danh lưu trong userModel
             painter = painterResource(id = AvatarHelper.getDrawableId(uiState.userModel?.profilePictureUrl)),
             contentDescription = "User Avatar",
             contentScale = ContentScale.Crop,
@@ -224,6 +257,69 @@ fun MapAndOverlays(
                 .border(2.dp, Color.White, CircleShape)
                 .clickable(onClick = onAvatarClicked)
         )
+    }
+}
+@Composable
+fun SosAlertBanner(alert: ActiveSosAlert, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.Red.copy(alpha = 0.9f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Default.Warning, contentDescription = "Cảnh báo", tint = Color.White)
+        Spacer(modifier = Modifier.width(25.dp))
+        Text(
+            text = "${alert.requestingUserName} đang gặp nguy hiểm!",
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp
+        )
+    }
+}
+
+@Composable
+fun SosMarker(position: LatLng, name: String) {
+    val infiniteTransition = rememberInfiniteTransition(label = "sos_pulse")
+    val pulseAnimation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ), label = "sos_pulse_anim"
+    )
+
+    MarkerComposable(
+        state = MarkerState(position = position),
+        anchor = Offset(0.5f, 0.5f)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(90.dp)) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawCircle(
+                    color = Color.Red,
+                    radius = size.minDimension / 2 * pulseAnimation,
+                    alpha = 0.5f * (1f - pulseAnimation)
+                )
+                drawCircle(
+                    color = Color.Red,
+                    radius = (size.minDimension / 2 * pulseAnimation) * 0.7f,
+                    alpha = 0.8f * (1f - pulseAnimation)
+                )
+            }
+            Icon(
+                painter = painterResource(id = R.drawable.img_2), // Thay bằng icon SOS của bạn
+                contentDescription = name,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color.Red)
+                    .padding(8.dp),
+                tint = Color.White
+            )
+        }
     }
 }
 // <<< THAY ĐỔI 3: THÊM COMPOSABLE MỚI ĐỂ TẠO CUSTOM MARKER >>>

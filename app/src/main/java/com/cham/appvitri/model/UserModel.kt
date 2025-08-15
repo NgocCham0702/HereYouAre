@@ -45,5 +45,7 @@ data class UserModel(
     var createdAt: Timestamp? = null,
 
     @ServerTimestamp
-    var lastUpdated: Timestamp? = null
+    var lastUpdated: Timestamp? = null,
+    val fcmToken: String? = null
+
 )

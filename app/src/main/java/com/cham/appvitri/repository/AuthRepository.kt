@@ -32,7 +32,6 @@ class AuthRepository {
      * Lấy người dùng đang đăng nhập hiện tại.
      * @return FirebaseUser? - Trả về đối tượng người dùng nếu đã đăng nhập, ngược lại trả về null.
      */
-    fun getCurrentUser(): FirebaseUser? {return auth.currentUser}
     //TODO : cac ham dang ky dang nhap ...
     /**
      * Lấy UID của người dùng đang đăng nhập hiện tại.
@@ -48,16 +47,6 @@ class AuthRepository {
      * @param password Mật khẩu của người dùng.
      * @return Result<FirebaseUser> - Trả về thành công với FirebaseUser hoặc thất bại với Exception.
      */
-    suspend fun loginUserWithEmail(email: String, password: String): Result<FirebaseUser> {
-        return try {
-            val authResult: AuthResult = auth.signInWithEmailAndPassword(email, password).await()
-            val user = authResult.user ?: throw IllegalStateException("Firebase user is null after login.")
-            Result.success(user)
-        } catch (e: Exception) {
-            // Các lỗi thường gặp: sai mật khẩu, email không tồn tại...
-            Result.failure(e)
-        }
-    }
     suspend fun registerUserWithEmail(email: String, password: String): Result<FirebaseUser> {
         return try {
             val authResult: AuthResult = auth.createUserWithEmailAndPassword(email, password).await()
@@ -69,9 +58,19 @@ class AuthRepository {
             Result.failure(e)
         }
     }
-    fun logout(){
-        auth.signOut()
+    suspend fun getSignInMethodsForEmail(email: String): Result<List<String>> {
+        return try {
+            val result = auth.fetchSignInMethodsForEmail(email).await()
+            val methods = result.signInMethods ?: emptyList()
+            Result.success(methods)
+        } catch (e: Exception) {
+            // Nếu không có kết nối mạng, Firebase thường ném ra một exception.
+            // Chúng ta trả về failure để ViewModel có thể xử lý.
+            Result.failure(e)
+        }
     }
+    fun logout(){
+        auth.signOut()    }
     /**
      * Hàm đăng ký người dùng mới bằng email và mật khẩu.
      * Được bọc trong Result để xử lý lỗi một cách an toàn.
@@ -85,6 +84,21 @@ class UserRepository {
     private val usersCollection = Firebase.firestore.collection("users")
     // Hàm lưu toàn bộ thông tin người dùng vào Firestore
     // Dùng uid làm key cho document
+    suspend fun isPhoneNumberExists(phoneNumber: String): Result<Boolean> {
+        return try {
+            val query = usersCollection
+                .whereEqualTo("phoneNumber", phoneNumber) // Tìm chính xác trường 'phoneNumber'
+                .limit(1) // Chỉ cần tìm 1 là đủ, để tối ưu tốc độ
+                .get()
+                .await()
+            // Nếu query.isEmpty là false, tức là tìm thấy ít nhất 1 document -> SĐT đã tồn tại
+            Result.success(!query.isEmpty)
+        } catch (e: Exception) {
+            // Xử lý các lỗi có thể xảy ra như mất kết nối mạng, không có quyền truy cập...
+            Log.e("UserRepository", "Lỗi khi kiểm tra SĐT: ", e)
+            Result.failure(e)
+        }
+    }
     /**
      * Lấy hồ sơ người dùng một lần (không lắng nghe thay đổi).
      * @param userId ID của người dùng.
@@ -233,24 +247,7 @@ class UserRepository {
             Result.failure(e)
         }
     }
-    /**
-     * Hàm cập nhật chỉ vị trí của người dùng mà không ghi đè các thông tin khác.
-     * @param userId ID của người dùng.
-     * @param latitude Vĩ độ mới.
-     * @param longitude Kinh độ mới.
-     * @return Result cho biết thành công hay thất bại.
-     */
-    suspend fun updateUserLocation(userId: String, latitude: Double, longitude: Double): Result<Unit> {
-        return try {
-            val locationData = mapOf(
-                "latitude" to latitude,
-                "longitude" to longitude,
-                "lastUpdated" to FieldValue.serverTimestamp()
-            )
-            usersCollection.document(userId).update(locationData).await()
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+    suspend fun updateFcmToken(userId: String, token: String?) {
+        usersCollection.document(userId).update("fcmToken", token).await()
     }
 }

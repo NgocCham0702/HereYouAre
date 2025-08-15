@@ -7,12 +7,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -21,34 +24,35 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-// --- Dữ liệu giả (Mock Data) ---
-data class Event(
-    val id: String,
-    val title: String,
-    val address: String,
-    val date: String,
-    val time: String,
-    val isUpcoming: Boolean
-)
-
-val mockEventList = listOf(
-    Event("1", "Xem phim cuối tuần", "CGV Vincom Gò Vấp", "Thứ Bảy, 25/12", "19:30", true),
-    Event("2", "Ăn tối cùng nhóm bạn", "Kichi-Kichi Phan Văn Trị", "Thứ Sáu, 24/12", "18:00", true),
-    Event("3", "Chuyến đi Vũng Tàu", "Bãi Sau, Vũng Tàu", "18/12 - 19/12", "Cả ngày", false),
-    Event("4", "Sinh nhật An", "Nhà hàng The Pizza Company", "15/12", "19:00", false)
-)
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.cham.appvitri.repository.Event
+import com.cham.appvitri.viewModel.EventListViewModel
+import androidx.compose.runtime.getValue
 
 // --- Giao diện ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EventListScreen() {
+fun EventListScreen(        onNavigateToCreateEvent: () -> Unit, // <<< THÊM THAM SỐ NÀY
+                            onNavigateBack: () -> Unit
+) {
+    val viewModel: EventListViewModel = viewModel()
+    val uiState by viewModel.uiState.collectAsState()
+
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Sự kiện của bạn") })
-        },
+            TopAppBar(title = { Text("Sự kiện của bạn") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Quay lại"
+                        )
+                    }
+                }
+                )
+                 },
         floatingActionButton = {
-            FloatingActionButton(onClick = { /* TODO: Mở màn hình tạo sự kiện */ }) {
+            FloatingActionButton(onClick = onNavigateToCreateEvent) {
                 Icon(Icons.Default.Add, contentDescription = "Tạo sự kiện mới")
             }
         }
@@ -66,7 +70,7 @@ fun EventListScreen() {
                     fontWeight = FontWeight.Bold
                 )
             }
-            items(mockEventList.filter { it.isUpcoming }) { event ->
+            items(uiState.upcomingEvents) { event ->
                 EventItemCard(event = event)
             }
 
@@ -79,7 +83,7 @@ fun EventListScreen() {
                     fontWeight = FontWeight.Bold
                 )
             }
-            items(mockEventList.filter { !it.isUpcoming }) { event ->
+            items(uiState.pastEvents) { event ->
                 EventItemCard(event = event, isPastEvent = true)
             }
         }
@@ -145,8 +149,8 @@ fun EventInfoRow(icon: ImageVector, text: String, isPastEvent: Boolean) {
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun EventListScreenPreview() {
-    EventListScreen()
-}
+//@Preview(showBackground = true)
+//@Composable
+//fun EventListScreenPreview() {
+//    EventListScreen()
+//}

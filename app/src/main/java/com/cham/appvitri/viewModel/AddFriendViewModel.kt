@@ -11,11 +11,11 @@ import com.cham.appvitri.model.FriendRequestStatus
 import com.cham.appvitri.model.UserModel
 import com.cham.appvitri.repository.ChatRepository
 import com.cham.appvitri.repository.UserRepository
-import com.google.firebase.auth.ktx.auth
+import com.google.firebase.Firebase
+import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.firestore.firestore
 import com.google.firebase.firestore.ktx.toObject
-import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
