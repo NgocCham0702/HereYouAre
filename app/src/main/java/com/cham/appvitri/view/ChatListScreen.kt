@@ -45,6 +45,7 @@ data class ChatPreview(
 // --- Giao diện ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+
 fun ChatListScreen(onNavigateBack: () -> Unit,
                    onChatItemClicked: (String) -> Unit,
                    onNavigateToCreateGroup: () -> Unit,
