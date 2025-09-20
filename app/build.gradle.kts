@@ -68,7 +68,7 @@ dependencies {
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-messaging-ktx")
-
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
     implementation ("com.google.android.gms:play-services-auth:21.1.1")
     implementation("io.coil-kt:coil-compose:2.6.0")
 

@@ -17,6 +17,8 @@ import com.cham.appvitri.view.*
 import com.cham.appvitri.view.account.LoginScreen
 import com.cham.appvitri.view.login.RegisterScreen
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.tasks.await
 
 @Composable
 fun AppNavigation() {
@@ -27,11 +29,34 @@ fun AppNavigation() {
     NavHost(navController = navController, startDestination = "splash") {
 
         composable("splash") {
-            SplashScreen() // Hiển thị màn hình chờ
-            LaunchedEffect(key1 = true) {
-                if (auth.currentUser != null) {
-                    navController.navigate("home/${auth.currentUser!!.uid}") {
-                        popUpTo("splash") { inclusive = true }
+            SplashScreen() // Hiển thị vòng xoay loading
+
+            LaunchedEffect(Unit) {
+                val currentUser = auth.currentUser
+                if (currentUser != null) {
+                    try {
+                        val doc = FirebaseFirestore.getInstance()
+                            .collection("users")
+                            .document(currentUser.uid)
+                            .get()
+                            .await()
+
+                        val role = doc.getString("role") ?: "user"
+
+                        if (role == "admin") {
+                            navController.navigate("adminPanel") {
+                                popUpTo("splash") { inclusive = true }
+                            }
+                        } else {
+                            navController.navigate("home/${currentUser.uid}") {
+                                popUpTo("splash") { inclusive = true }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Nếu lỗi thì coi như user thường
+                        navController.navigate("home/${currentUser.uid}") {
+                            popUpTo("splash") { inclusive = true }
+                        }
                     }
                 } else {
                     navController.navigate("welcome") {
@@ -40,6 +65,7 @@ fun AppNavigation() {
                 }
             }
         }
+
         composable("forgot_password") {
             ForgotPasswordScreen(
                 onPasswordResetSuccess = {
@@ -92,7 +118,9 @@ fun AppNavigation() {
                 }
             }
         }
-
+        composable("adminPanel") {
+            AdminPanelScreen(navController = navController)
+        }
         composable(
             route = "profile/{userId}",
             arguments = listOf(navArgument("userId") { type = NavType.StringType })

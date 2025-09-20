@@ -173,6 +173,7 @@ fun MapAndOverlays(
 ) {
     val mapProperties = MapProperties(isMyLocationEnabled = false)
     val mapUiSettings = MapUiSettings(myLocationButtonEnabled = false)
+    val nearbyFriendUids = uiState.nearbyFriends.map { it.uid }.toSet()
 
     Box(Modifier.fillMaxSize()) {
         GoogleMap(
@@ -197,10 +198,21 @@ fun MapAndOverlays(
                     val lat = friend.latitude
                     val lng = friend.longitude
                     if (lat != null && lng != null) {
+                        // --- PHẦN LOGIC MỚI BẮT ĐẦU TỪ ĐÂY ---
+
+                        // 1. Kiểm tra xem người bạn này có nằm trong danh sách ở gần không
+                        val isNearby = nearbyFriendUids.contains(friend.uid)
+
+                        // 2. Tùy chỉnh thông tin hiển thị dựa trên việc họ có ở gần hay không
+                        val snippetText = if (isNearby) {
+                            "Ở rất gần bạn!" // Tin nhắn đặc biệt
+                        } else {
+                            "Cập nhật lần cuối: ${friend.lastUpdated?.toDate()?.toString() ?: "N/A"}" // Thông tin bình thường
+                        }
                         FriendMarker(
                             position = LatLng(lat, lng),
                             title = friend.displayName ?: "Bạn bè",
-                            snippet = "Đang ở gần bạn",
+                            snippet = snippetText, // <<< SỬ DỤNG SNIPPET ĐÃ TÙY CHỈNH
                             avatarIdentifier = friend.profilePictureUrl
                         )
                     }
@@ -328,7 +340,8 @@ fun FriendMarker(
     position: LatLng,
     title: String,
     snippet: String,
-    avatarIdentifier: String?
+    avatarIdentifier: String?,
+
 ) {
     val context = LocalContext.current
     var bitmapDescriptor by remember { mutableStateOf<BitmapDescriptor?>(null) }

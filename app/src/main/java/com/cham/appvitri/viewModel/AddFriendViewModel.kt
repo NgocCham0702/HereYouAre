@@ -363,6 +363,7 @@ class AddFriendViewModel : ViewModel() {
     )
 
     // HÀM MỚI: Lắng nghe các lời mời đã gửi
+    // HÀM MỚI: Lắng nghe các lời mời đã gửi
     private fun listenToSentFriendRequests(uid: String) {
         requestsCollection
             .whereEqualTo("fromUid", uid)
@@ -373,22 +374,30 @@ class AddFriendViewModel : ViewModel() {
                     return@addSnapshotListener
                 }
                 viewModelScope.launch {
-                    val requests = snapshot?.documents?.mapNotNull { it.toObject<FriendRequestModel>() } ?: emptyList()
-                    val requestsWithReceivers = requests.mapNotNull { request ->
-                        usersCollection.document(request.toUid).get().await().toObject<UserModel>()?.let { receiver ->
-                            FriendRequestWithReceiver(request, receiver)
-                        }
-                    }
+                    val requestsWithReceivers = snapshot?.documents?.mapNotNull { doc ->
+                        val request = doc.toObject<FriendRequestModel>()
+                        if (request != null) {
+                            request.requestId = doc.id   // ✅ GÁN ID document vào request
+                            usersCollection.document(request.toUid).get().await()
+                                .toObject<UserModel>()?.let { receiver ->
+                                    FriendRequestWithReceiver(request, receiver)
+                                }
+                        } else null
+                    } ?: emptyList()
+
                     _sentRequests.value = requestsWithReceivers
                 }
             }
     }
+
 
     // THÊM HÀM MỚI: Để hủy lời mời đã gửi
     fun cancelFriendRequest(requestWithReceiver: FriendRequestWithReceiver) {
         viewModelScope.launch {
             // Cần đảm bảo requestId được lưu trong document khi tạo
             val requestDocId = requestWithReceiver.request.requestId
+            Log.d("CancelRequest", "authUid=${Firebase.auth.currentUser?.uid}, fromUid=${requestWithReceiver.request.fromUid}")
+
             try {
                 requestsCollection.document(requestDocId).delete().await()
                 _uiMessage.value = "Đã hủy lời mời."

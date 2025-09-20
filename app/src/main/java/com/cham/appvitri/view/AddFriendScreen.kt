@@ -141,7 +141,7 @@ fun SearchSection(
     OutlinedTextField(
         value = searchQuery,
         onValueChange = onQueryChange,
-        label = { Text("Nhập mã mời của bạn bè...") },
+        label = { Text("Nhập mã mời, sdt, email của bạn bè...") },
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
         shape = RoundedCornerShape(8.dp)

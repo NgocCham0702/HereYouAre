@@ -2,6 +2,7 @@
 // file: com/cham/appvitri/viewModel/HomeViewModel.kt
 package com.cham.appvitri.viewModel
 
+import android.location.Location
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -24,7 +25,8 @@ data class HomeUiState(
     val userLocation: LatLng? = null,
     val navigateTo: String? = null,
     val friends: List<UserModel> = emptyList(),
-    val activeSosAlert: ActiveSosAlert? = null, // <<< THÊM
+    val nearbyFriends: List<UserModel> = emptyList(), // <<< THÊM STATE MỚI
+    val activeSosAlert: ActiveSosAlert? = null,
     val cameraTargetLocation: LatLng? = null // <<< DÙNG MỘT BIẾN RIÊNG CHO TỌA ĐỘ
 )
 data class ActiveSosAlert(
@@ -37,9 +39,8 @@ class HomeViewModel(
     private val locationHelper: LocationHelper,
     private val userRepository: UserRepository,
     private val sosRepository: SOSRepository
-) : ViewModel() {
-
-    private val firestore = FirebaseFirestore.getInstance()
+) : ViewModel()
+{   private val firestore = FirebaseFirestore.getInstance()
     private var currentUserId: String? = null
     private val authRepository = AuthRepository()
 
@@ -73,9 +74,10 @@ class HomeViewModel(
         friendsListenerJob?.cancel()
         friendsListenerJob = viewModelScope.launch {
             userRepository.getFriendsProfileFlow(friendUids)
-                .catch { e -> Log.e("HomeViewModel", "Error listening to friends", e) }
                 .collect { updatedFriends ->
                     _uiState.update { it.copy(friends = updatedFriends) }
+
+                    updateNearbyFriends() // <<< GỌI CẢ Ở ĐÂY NỮA
                 }
         }
     }
@@ -134,6 +136,7 @@ class HomeViewModel(
                     // Cập nhật State
                     _uiState.update { it.copy(userLocation = latLng) }
                     updateLocationInFirebase(latLng)
+                    updateNearbyFriends() // <<< GỌI Ở ĐÂY
 
                     if (!hasZoomedOnAppStart) {
                         zoomToCurrentLocation()
@@ -161,5 +164,45 @@ class HomeViewModel(
 
     fun onCameraMoved() {
         _uiState.update { it.copy(navigateTo = null) }
+    }
+    /**
+     * Tính khoảng cách giữa hai điểm LatLng bằng mét.
+     */
+    private fun calculateDistanceInMeters(start: LatLng, end: LatLng): Float {
+        val results = FloatArray(1)
+        Location.distanceBetween(
+            start.latitude, start.longitude,
+            end.latitude, end.longitude,
+            results
+        )
+        return results[0]
+    }
+    private fun updateNearbyFriends() {
+        val currentState = _uiState.value
+        val myLocation = currentState.userLocation ?: return // Cần vị trí của tôi
+        val allFriends = currentState.friends
+
+        // Ngưỡng khoảng cách, ví dụ: 1000 mét
+        val proximityRadiusMeters = 3000.0f
+
+        // Lọc danh sách bạn bè
+        val nearby = allFriends.filter { friend ->
+            // Chỉ xét những người bạn có thông tin vị trí
+            val friendLocation = if (friend.latitude != null && friend.longitude != null) {
+                LatLng(friend.latitude, friend.longitude)
+            } else {
+                null
+            }
+
+            if (friendLocation != null) {
+                val distance = calculateDistanceInMeters(myLocation, friendLocation)
+                distance < proximityRadiusMeters // Giữ lại những người bạn có khoảng cách < ngưỡng
+            } else {
+                false // Bỏ qua những người bạn không có vị trí
+            }
+        }
+
+        // Cập nhật UI State với danh sách mới
+        _uiState.update { it.copy(nearbyFriends = nearby) }
     }
 }

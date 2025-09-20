@@ -4,11 +4,14 @@
     <selectionStates>
       <SelectionState runConfigName="app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2025-08-17T19:16:12.619237800Z">
+        <DropdownSelection timestamp="2025-09-05T14:51:59.647146800Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="PhysicalDevice" identifier="serial=5SKV4SB6VWRCFENN" />
+              <DeviceId pluginId="FirebaseDirectAccess" identifier="reservation=projects/appdinhvi-c/deviceSessions/session-19htdfe66fgm5" />
             </handle>
+            <template>
+              <DeviceId pluginId="FirebaseDirectAccess" type="TEMPLATE" identifier="model_id=panther/33" />
+            </template>
           </Target>
         </DropdownSelection>
         <DialogSelection />

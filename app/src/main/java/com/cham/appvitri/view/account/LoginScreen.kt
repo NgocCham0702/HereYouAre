@@ -72,6 +72,7 @@ fun LoginScreen(
     val isLoading by loginViewModel.isLoading.collectAsState()
     val errorMessage by loginViewModel.errorMessage.collectAsState()
     val loginSuccess by loginViewModel.loginSuccess.collectAsState()
+    val isAdminLogin by loginViewModel.isAdminLogin.collectAsState()
 
     val context = LocalContext.current // Dùng để hiển thị Toast
     // Cấu hình Google Sign-In
@@ -99,10 +100,14 @@ fun LoginScreen(
     }
 
 
-    // Ví dụ: khi đăng nhập thành công, chuyển màn hình.
-    LaunchedEffect(loginSuccess) {
-
-        if (loginSuccess) {
+    LaunchedEffect(loginSuccess, isAdminLogin) {
+        if (isAdminLogin) {
+            // Admin login
+            Toast.makeText(context, "Đăng nhập admin thành công!", Toast.LENGTH_SHORT).show()
+            navController.navigate("adminPanel") {
+                popUpTo("login") { inclusive = true }
+            }
+        } else if (loginSuccess) {
             val userId = loginViewModel.getCurrentUserId()
             if (userId != null) {
                 // Hiển thị Toast trước khi điều hướng
@@ -119,6 +124,7 @@ fun LoginScreen(
             }
         }
     }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier.fillMaxSize()

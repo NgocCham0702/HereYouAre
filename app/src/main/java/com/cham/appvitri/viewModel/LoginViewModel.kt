@@ -43,6 +43,9 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private val _loginSuccess = MutableStateFlow(false)
     val loginSuccess = _loginSuccess.asStateFlow()
 
+    private val _isAdminLogin = MutableStateFlow(false)
+    val isAdminLogin = _isAdminLogin.asStateFlow()
+
     fun onPhoneNumberChange(value: String) {
         _phoneNumber.value = value
         _errorMessage.value = null // Xóa lỗi khi người dùng nhập lại
@@ -107,43 +110,58 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             _errorMessage.value = null
 
             try {
-                // Bước 1: Đăng nhập vào Firebase (giữ nguyên)
+                // Bước 1: Đăng nhập vào Firebase
                 val result = auth.signInWithCredential(credential).await()
                 val user = result.user ?: throw IllegalStateException("Firebase user is null.")
 
-                // Bước 2: Sử dụng UserRepository để tương tác với Firestore
-                // (Nên tách logic Firestore ra Repository để tái sử dụng)
+                // Bước 2: Tương tác với UserRepository
                 val userRepository = UserRepository()
                 val existingUserResult = userRepository.getUserProfileOnce(user.uid)
 
                 if (existingUserResult.isFailure) {
+                    // =================================================================
                     // TRƯỜNG HỢP 1: ĐĂNG KÝ MỚI (User chưa có trong Firestore)
-
+                    // =================================================================
+                    // Lấy thông tin từ Google để điền vào hồ sơ ban đầu
                     val newUserProfile = UserModel(
                         uid = user.uid,
-                        displayName = user.displayName,
+                        displayName = user.displayName, // Lấy tên từ Google làm tên mặc định
                         email = user.email,
                         phoneNumber = user.phoneNumber,
-                        profilePictureUrl = user.photoUrl?.toString(),
-                        personalCode = generatePersonalCode() // Giữ nguyên logic tạo mã
+                        profilePictureUrl = user.photoUrl?.toString(), // Lấy ảnh từ Google làm ảnh mặc định
+                        personalCode = generatePersonalCode()
                     )
 
-                    userRepository.saveUserProfile(newUserProfile).getOrThrow() // Lưu người dùng mới
+                    userRepository.saveUserProfile(newUserProfile).getOrThrow()
 
                 } else {
-                    // TRƯỜG HỢP 2: ĐĂNG NHẬP (User đã có trong Firestore)
-                    // -> Chỉ cập nhật thông tin cần thiết.
-                    // Logic này thường nằm trong UserRepository, ví dụ: userRepository.updateUserInfo(...)
-                    // Tạm thời làm trực tiếp ở đây:
+                    // =================================================================
+                    // TRƯỜNG HỢP 2: ĐĂNG NHẬP (User đã có trong Firestore)
+                    // =================================================================
+                    val existingUserProfile = existingUserResult.getOrThrow()
                     val userDocRef = db.collection("users").document(user.uid)
-                    val updates = mapOf(
-                        "displayName" to user.displayName,
-                        "profilePictureUrl" to user.photoUrl.toString()
-                    )
-                    userDocRef.update(updates).await()
+                    val updates = mutableMapOf<String, Any?>()
+
+                    // Logic cập nhật thông minh:
+                    // 1. Cập nhật TÊN: Chỉ cập nhật nếu tên trong Firestore đang trống.
+                    if (existingUserProfile.displayName.isNullOrBlank()) {
+                        updates["displayName"] = user.displayName
+                    }
+
+                    // 2. Cập nhật ẢNH ĐẠI DIỆN: Chỉ cập nhật nếu ảnh trong Firestore đang trống
+                    //    VÀ Google cung cấp một ảnh mới.
+                    val googlePhotoUrl = user.photoUrl
+                    if (existingUserProfile.profilePictureUrl.isNullOrBlank() && googlePhotoUrl != null) {
+                        updates["profilePictureUrl"] = googlePhotoUrl.toString()
+                    }
+
+                    // Chỉ thực hiện lệnh ghi vào DB nếu có gì đó cần cập nhật
+                    if (updates.isNotEmpty()) {
+                        userDocRef.update(updates).await()
+                    }
                 }
 
-                // Bước 3: Xử lý đăng nhập thành công (giữ nguyên)
+                // Bước 3: Xử lý đăng nhập thành công
                 handleLoginSuccess(user)
 
             } catch (e: Exception) {
@@ -152,8 +170,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 _isLoading.value = false
             }
         }
-    }
-    private fun generatePersonalCode(): String {
+    }    private fun generatePersonalCode(): String {
         // 1. Định nghĩa bộ ký tự sẽ sử dụng
         // Bỏ đi các ký tự dễ nhầm lẫn như O, 0, I, l, 1
         val allowedChars = ('A'..'Z') + ('a'..'z') + ('0'..'9')
@@ -169,25 +186,40 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         _errorMessage.value = "Quá trình đăng nhập Google đã bị hủy."
     }
 
-    private  fun handleLoginSuccess(user: FirebaseUser?) {
+    private fun handleLoginSuccess(user: FirebaseUser?) {
         if (user != null) {
             updateFcmTokenForCurrentUser()
 
-            // Cập nhật vị trí sau khi đăng nhập thành công
-            updateUserLocation(user.uid) { success ->
-                if (success) {
-                    Log.d("Firestore", "Cập nhật vị trí thành công ")
-                    Log.d("LoginViewModel", "Cập nhật vị trí tc.")
+            // Kiểm tra role từ Firestore
+            viewModelScope.launch {
+                try {
+                    val doc = db.collection("users").document(user.uid).get().await()
+                    val role = doc.getString("role") ?: "user"
+
+                    // Cập nhật vị trí sau khi đăng nhập
+                    updateUserLocation(user.uid) { success ->
+                        if (success) {
+                            Log.d("Firestore", "Cập nhật vị trí thành công")
+                        }
+
+                        if (role == "admin") {
+                            _isAdminLogin.value = true   // ✅ admin login
+                        } else {
+                            _loginSuccess.value = true   // ✅ user login
+                        }
+                        _isLoading.value = false
+                    }
+                } catch (e: Exception) {
+                    _errorMessage.value = "Không đọc được role: ${e.message}"
+                    _isLoading.value = false
                 }
-                // Thông báo cho UI rằng đã đăng nhập thành công
-                _loginSuccess.value = true
-                _isLoading.value = false
             }
         } else {
             _errorMessage.value = "Không thể lấy thông tin người dùng."
             _isLoading.value = false
         }
     }
+
 
     // Hàm lấy và cập nhật vị trí lên Firestore
     @SuppressLint("MissingPermission") // Cảnh báo: Cần đảm bảo quyền đã được cấp ở UI

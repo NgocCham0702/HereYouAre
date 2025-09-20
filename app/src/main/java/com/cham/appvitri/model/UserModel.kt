@@ -38,8 +38,8 @@ data class UserModel(
     var friendUids: List<String> = emptyList(),
 
     // Các trường vị trí
-    var latitude: Double? = null,
-    var longitude: Double? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
 
     @ServerTimestamp
     var createdAt: Timestamp? = null,

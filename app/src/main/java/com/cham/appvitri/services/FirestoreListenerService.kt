@@ -27,7 +27,7 @@ class FirestoreListenerService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d("ListenerService", "Service đã bắt đầu (Started)")
-        startForeground(NOTIFICATION_ID, createForegroundNotification())
+        //startForeground(NOTIFICATION_ID, createForegroundNotification())
         startListeningForMessages()
         return START_STICKY
     }
